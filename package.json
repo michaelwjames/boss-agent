@@ -5,12 +5,15 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest"
   },
   "dependencies": {
     "discord.js": "^14.25.1",
     "dotenv": "^16.4.5",
     "fs-extra": "^11.2.0",
-    "groq-sdk": "^0.10.0"
+    "groq-sdk": "^0.10.0",
+    "jest": "^30.2.0",
+    "js-tiktoken": "^1.0.21"
   }
 }

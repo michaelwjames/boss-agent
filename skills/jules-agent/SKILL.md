@@ -40,6 +40,8 @@ python jules_client.py create --prompt "TASK_DESCRIPTION" [OPTIONS]
 - `--require-approval`: Require explicit plan approval
 - `--auto-pr`: Automatically create pull requests
 - `--no-poll`: Create session without polling for updates
+- `--plain`: Output plain text (recommended for Boss Agent)
+- `--timeout`: Max polling time in seconds (default: 300)
 
 ### List Sessions
 ```bash

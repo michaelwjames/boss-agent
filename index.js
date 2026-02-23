@@ -6,6 +6,8 @@ import path from 'path';
 import { GroqProvider } from './lib/groq_provider.js';
 import { FileSystem } from './lib/file_system.js';
 import { ToolRegistry } from './lib/tools.js';
+import { getEncoding } from 'js-tiktoken';
+import { Nomenclature } from './lib/nomenclature.js';
 
 // --- Configuration ---
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -22,7 +24,12 @@ if (!GROQ_API_KEY) {
 
 const groq = new GroqProvider(GROQ_API_KEY, process.env.GROQ_MODEL, process.env.GROQ_WHISPER_MODEL);
 const fileSystem = new FileSystem();
-const tools = new ToolRegistry();
+const nomenclature = new Nomenclature();
+const tools = new ToolRegistry(nomenclature);
+const enc = getEncoding('cl100k_base');
+
+// Load Nomenclature catalog on startup
+nomenclature.loadCatalog().catch(err => console.error('Nomenclature load failed:', err));
 
 const client = new Client({
   intents: [
@@ -99,11 +106,22 @@ CURRENT CONTEXT:
 ${vaultContext}
 `;
 
-    let messages = [
-      { role: 'system', content: systemPrompt },
-      ...history.slice(-10),
-      { role: 'user', content: userText },
-    ];
+    // Token-aware sliding window
+    const MAX_CONTEXT_TOKENS = 6000;
+    let messages = [{ role: 'system', content: systemPrompt }];
+    let currentTokens = enc.encode(systemPrompt).length + enc.encode(userText).length + 500; // 500 safety margin for tool defs
+
+    // Add history from newest to oldest until limit reached
+    const historyToInclude = [];
+    for (let i = history.length - 1; i >= 0; i--) {
+      const msg = history[i];
+      const msgTokens = enc.encode(msg.content || JSON.stringify(msg.tool_calls || '')).length;
+      if (currentTokens + msgTokens > MAX_CONTEXT_TOKENS) break;
+      currentTokens += msgTokens;
+      historyToInclude.unshift(msg);
+    }
+
+    messages = [...messages, ...historyToInclude, { role: 'user', content: userText }];
 
     const toolDefs = tools.getDefinitions();
     let responseMessage = await groq.chat(messages, toolDefs);
@@ -144,9 +162,9 @@ ${vaultContext}
       }
     }
 
-    // Save history
+    // Save history (up to last 50 messages, sliding window will handle context on load)
     messages.push(responseMessage);
-    await fileSystem.saveSession(sessionId, messages.filter(m => m.role !== 'system').slice(-20));
+    await fileSystem.saveSession(sessionId, messages.filter(m => m.role !== 'system').slice(-50));
 
   } catch (error) {
     console.error('Error handling message:', error);
