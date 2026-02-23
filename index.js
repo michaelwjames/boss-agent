@@ -1,117 +1,185 @@
 import 'dotenv/config';
-import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
-import qrcode from 'qrcode-terminal';
+import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import { writeFile, unlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import path from 'path';
 import { GroqProvider } from './lib/groq_provider.js';
 import { FileSystem } from './lib/file_system.js';
-import { ShellExecutor } from './lib/shell_executor.js';
+import { ToolRegistry } from './lib/tools.js';
 
-// Configuration
+// --- Configuration ---
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+if (!DISCORD_BOT_TOKEN) {
+  console.error('Error: DISCORD_BOT_TOKEN is not set in environment variables.');
+  process.exit(1);
+}
 if (!GROQ_API_KEY) {
   console.error('Error: GROQ_API_KEY is not set in environment variables.');
   process.exit(1);
 }
 
-const groq = new GroqProvider(GROQ_API_KEY);
-const fs = new FileSystem();
-const shell = new ShellExecutor();
+const groq = new GroqProvider(GROQ_API_KEY, process.env.GROQ_MODEL, process.env.GROQ_WHISPER_MODEL);
+const fileSystem = new FileSystem();
+const tools = new ToolRegistry();
 
 const client = new Client({
-  authStrategy: new LocalAuth(),
-  puppeteer: {
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    executablePath: process.env.CHROME_PATH || undefined, // Useful for some environments
-  }
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages,
+  ],
+  partials: [Partials.Channel], // Required for DM support
 });
 
-client.on('qr', (qr) => {
-  qrcode.generate(qr, { small: true });
-  console.log('QR RECEIVED. Please scan with your WhatsApp app.');
+client.once('ready', () => {
+  console.log(`Boss Agent is online as ${client.user.tag}`);
 });
 
-client.on('ready', () => {
-  console.log('Boss, the Operator is online and ready!');
-});
+// --- Message Handler ---
+client.on('messageCreate', async (message) => {
+  // Ignore messages from bots (including self)
+  if (message.author.bot) return;
 
-client.on('message', async (msg) => {
-  // Ignore status updates and group messages if you want, or handle them.
-  // For this implementation, we handle everything incoming.
-  if (msg.fromMe) return;
+  const sessionId = String(message.channel.id);
 
-  const sessionId = msg.from.replace(/[^a-zA-Z0-9]/g, '_');
-  
   try {
-    const chat = await msg.getChat();
-    await chat.sendStateTyping();
+    let userText = null;
 
-    const vaultContext = await fs.readAllNotes();
-    const history = await fs.loadSession(sessionId);
+    // Handle voice/audio attachments — transcribe via Groq Whisper
+    const audioAttachment = message.attachments.find(a => {
+      const ct = a.contentType || '';
+      return ct.startsWith('audio/') || ct.includes('ogg') || ct.includes('webm');
+    });
 
-    const systemPrompt = `You are the "Boss Operator," a highly efficient AI agent.
-RULES:
+    if (audioAttachment) {
+      const tempPath = path.join(tmpdir(), `boss_audio_${Date.now()}.ogg`);
+      const response = await fetch(audioAttachment.url);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      await writeFile(tempPath, buffer);
+
+      try {
+        userText = await groq.transcribe(tempPath);
+        await message.reply(`🎤 *I heard:* "${userText}"`);
+      } finally {
+        await unlink(tempPath).catch(() => {});
+      }
+    }
+
+    // Handle text content
+    if (message.content) {
+      userText = message.content;
+    }
+
+    // Skip if no processable content
+    if (!userText) return;
+
+    // Send typing indicator
+    await message.channel.sendTyping();
+
+    // Load context
+    const soulPrompt = await fileSystem.loadSoulPrompt();
+    const vaultContext = await fileSystem.readAllNotes(userText);
+    const history = await fileSystem.loadSession(sessionId);
+
+    const systemPrompt = `You are the "Boss Agent," a strictly obedient but personality-rich AI assistant.
+
+CORE RULES:
 1. Always address the user as "Boss."
-2. You have access to local Markdown files in the 'vault/', 'memory/', and 'skills/' directories. Use them to provide context.
-3. You can execute terminal commands via 'run_terminal'.
-4. You can call the 'jules' CLI tool for advanced tasks (e.g., 'jules --query "..."').
-5. You can save new notes to memory using 'write_note'.
-6. Keep your responses concise and action-oriented unless the Boss asks for detail.
+2. You can ONLY execute predefined make targets via the 'run_make' tool. You cannot run arbitrary shell commands.
+3. You can save notes to memory using 'write_note'.
+4. You have access to context from vault/, memory/, and skills/ directories.
+5. Keep your responses concise and action-oriented unless the Boss asks for detail.
+6. If the Boss sent a voice note, you received the transcribed text. Confirm what you heard before acting on ambiguous commands.
 
+${soulPrompt ? `PERSONALITY:\n${soulPrompt}\n` : ''}
 CURRENT CONTEXT:
 ${vaultContext}
 `;
 
     let messages = [
       { role: 'system', content: systemPrompt },
-      ...history.slice(-10), // Keep last 10 messages for context
-      { role: 'user', content: msg.body }
+      ...history.slice(-10),
+      { role: 'user', content: userText },
     ];
 
-    let responseMessage = await groq.getChatCompletion(messages, groq.getToolsDefinition());
+    const toolDefs = tools.getDefinitions();
+    let responseMessage = await groq.chat(messages, toolDefs);
 
     // Tool execution loop
     while (responseMessage.tool_calls) {
       messages.push(responseMessage);
-      
+
       for (const toolCall of responseMessage.tool_calls) {
         const { name, arguments: argsString } = toolCall.function;
         const args = JSON.parse(argsString);
-        let result;
 
         console.log(`[TOOL] Executing ${name} with args:`, args);
 
-        if (name === 'run_terminal') {
-          const shellResult = await shell.run(args.command);
-          result = `STDOUT: ${shellResult.stdout}\nSTDERR: ${shellResult.stderr}\nExit Code: ${shellResult.exitCode}`;
-        } else if (name === 'write_note') {
-          result = await fs.writeNote(args.filename, args.content);
-        }
+        const result = await tools.execute(name, args);
 
         messages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
-          content: result
+          content: result,
         });
       }
 
-      responseMessage = await groq.getChatCompletion(messages, groq.getToolsDefinition());
+      // Refresh typing indicator between tool calls
+      await message.channel.sendTyping();
+      responseMessage = await groq.chat(messages, toolDefs);
     }
 
-    // Send final response
-    await client.sendMessage(msg.from, responseMessage.content);
+    // Send final response (Discord has a 2000 char limit per message)
+    const replyText = responseMessage.content || 'Done, Boss. No further output.';
+    if (replyText.length <= 2000) {
+      await message.reply(replyText);
+    } else {
+      // Split long responses into chunks
+      const chunks = splitMessage(replyText, 2000);
+      for (const chunk of chunks) {
+        await message.channel.send(chunk);
+      }
+    }
 
     // Save history
     messages.push(responseMessage);
-    await fs.saveSession(sessionId, messages.filter(m => m.role !== 'system').slice(-20));
+    await fileSystem.saveSession(sessionId, messages.filter(m => m.role !== 'system').slice(-20));
 
   } catch (error) {
     console.error('Error handling message:', error);
     try {
-      await client.sendMessage(msg.from, `Sorry Boss, I hit a snag: ${error.message}`);
+      await message.reply(`Sorry Boss, I hit a snag: ${error.message}`);
     } catch (sendError) {
-      console.error('Could not send error message to WhatsApp:', sendError);
+      console.error('Could not send error message:', sendError);
     }
   }
 });
 
-client.initialize();
+/**
+ * Split a long message into chunks that respect Discord's 2000 char limit.
+ * Tries to split on newlines to avoid breaking mid-sentence.
+ */
+function splitMessage(text, maxLength) {
+  const chunks = [];
+  let remaining = text;
+
+  while (remaining.length > maxLength) {
+    let splitIndex = remaining.lastIndexOf('\n', maxLength);
+    if (splitIndex === -1 || splitIndex < maxLength / 2) {
+      splitIndex = maxLength;
+    }
+    chunks.push(remaining.slice(0, splitIndex));
+    remaining = remaining.slice(splitIndex).trimStart();
+  }
+
+  if (remaining.length > 0) {
+    chunks.push(remaining);
+  }
+
+  return chunks;
+}
+
+client.login(DISCORD_BOT_TOKEN);

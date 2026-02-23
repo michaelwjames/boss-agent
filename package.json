@@ -1,17 +1,16 @@
 {
   "name": "boss-operator",
   "version": "1.0.0",
-  "description": "WhatsApp LLM Agent with Groq and local memory",
+  "description": "Discord LLM Agent with Groq and local memory",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "whatsapp-web.js": "^1.26.0",
-    "qrcode-terminal": "^0.12.0",
-    "groq-sdk": "^0.10.0",
+    "discord.js": "^14.25.1",
     "dotenv": "^16.4.5",
-    "fs-extra": "^11.2.0"
+    "fs-extra": "^11.2.0",
+    "groq-sdk": "^0.10.0"
   }
 }
