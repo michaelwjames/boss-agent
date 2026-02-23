@@ -19,27 +19,31 @@ console = Console()
 class JulesClient:
     BASE_URL = "https://jules.googleapis.com/v1alpha"
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, plain: bool = False):
         if not api_key:
             raise ValueError("Jules API Key is required. Set JULES_API_KEY env var or pass it explicitly.")
         self.api_key = api_key
+        self.plain = plain
         self.headers = {
             "x-goog-api-key": self.api_key,
             "Content-Type": "application/json"
         }
 
+    def _print(self, message, style=None):
+        if self.plain:
+            # Strip rich tags if any
+            import re
+            clean_msg = re.sub(r'\[/?[a-z ]+\]', '', str(message))
+            print(clean_msg)
+        else:
+            if style:
+                console.print(f"[{style}]{message}[/{style}]")
+            else:
+                console.print(message)
+
     def list_sources(self, page_size: int = 30, page_token: Optional[str] = None, 
                      filter_expr: Optional[str] = None) -> Dict[str, Any]:
-        """Lists all sources (repositories) connected to your account.
-        
-        Args:
-            page_size: Number of sources to return (1-100). Defaults to 30.
-            page_token: Page token from a previous ListSources response.
-            filter_expr: Filter expression (e.g., 'name=sources/source1 OR name=sources/source2')
-        
-        Returns:
-            Dict containing 'sources' list and optional 'nextPageToken'
-        """
+        """Lists all sources (repositories) connected to your account."""
         url = f"{self.BASE_URL}/sources"
         params = {"pageSize": page_size}
         if page_token:
@@ -52,29 +56,22 @@ class JulesClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error listing sources:[/bold red] {e}")
+            self._print(f"[bold red]Error listing sources:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
     def get_source(self, source_id: str) -> Dict[str, Any]:
-        """Retrieves a single source by ID.
-        
-        Args:
-            source_id: The source ID (e.g., 'github-myorg-myrepo')
-        
-        Returns:
-            Dict containing source details including branches
-        """
+        """Retrieves a single source by ID."""
         url = f"{self.BASE_URL}/sources/{source_id}"
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error getting source:[/bold red] {e}")
+            self._print(f"[bold red]Error getting source:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
     def get_source_id(self, repo_name: str) -> str:
@@ -94,26 +91,14 @@ class JulesClient:
             
             raise ValueError(f"Repository '{repo_name}' not found in connected sources. Please connect it in the Jules web UI first.")
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error fetching sources:[/bold red] {e}")
+            self._print(f"[bold red]Error fetching sources:[/bold red] {e}")
             sys.exit(1)
 
     def create_session(self, prompt: str, title: Optional[str] = None, 
                       source_id: Optional[str] = None, starting_branch: str = "main",
                       require_plan_approval: bool = False, 
                       automation_mode: str = "AUTOMATION_MODE_UNSPECIFIED") -> Dict[str, Any]:
-        """Creates a new Jules session.
-        
-        Args:
-            prompt: The task description for Jules to execute
-            title: Optional title for the session
-            source_id: Source repository name (e.g., 'sources/github-myorg-myrepo')
-            starting_branch: Branch to start from (default: 'main')
-            require_plan_approval: If true, plans require explicit approval
-            automation_mode: 'AUTOMATION_MODE_UNSPECIFIED' or 'AUTO_CREATE_PR'
-        
-        Returns:
-            Dict containing the created session
-        """
+        """Creates a new Jules session."""
         url = f"{self.BASE_URL}/sessions"
         
         payload = {
@@ -145,21 +130,13 @@ class JulesClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error creating session:[/bold red] {e}")
+            self._print(f"[bold red]Error creating session:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
     def list_sessions(self, page_size: int = 30, page_token: Optional[str] = None) -> Dict[str, Any]:
-        """Lists all sessions for the authenticated user.
-        
-        Args:
-            page_size: Number of sessions to return (1-100). Defaults to 30.
-            page_token: Page token from a previous ListSessions response.
-        
-        Returns:
-            Dict containing 'sessions' list and optional 'nextPageToken'
-        """
+        """Lists all sessions for the authenticated user."""
         url = f"{self.BASE_URL}/sessions"
         params = {"pageSize": page_size}
         if page_token:
@@ -170,61 +147,39 @@ class JulesClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error listing sessions:[/bold red] {e}")
+            self._print(f"[bold red]Error listing sessions:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
     def get_session(self, session_id: str) -> Dict[str, Any]:
-        """Retrieves a single session by ID.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-        
-        Returns:
-            Dict containing full session details including outputs if completed
-        """
+        """Retrieves a single session by ID."""
         url = f"{self.BASE_URL}/sessions/{session_id}"
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error getting session:[/bold red] {e}")
+            self._print(f"[bold red]Error getting session:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
     def delete_session(self, session_id: str) -> bool:
-        """Deletes a session.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-        
-        Returns:
-            True if successful
-        """
+        """Deletes a session."""
         url = f"{self.BASE_URL}/sessions/{session_id}"
         try:
             response = requests.delete(url, headers=self.headers)
             response.raise_for_status()
             return True
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error deleting session:[/bold red] {e}")
+            self._print(f"[bold red]Error deleting session:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
     def send_message(self, session_id: str, message: str) -> Dict[str, Any]:
-        """Sends a message from the user to an active session.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-            message: The message to send to the session
-        
-        Returns:
-            Dict containing the response
-        """
+        """Sends a message from the user to an active session."""
         url = f"{self.BASE_URL}/sessions/{session_id}:sendMessage"
         payload = {"prompt": message}
         
@@ -233,20 +188,13 @@ class JulesClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error sending message:[/bold red] {e}")
+            self._print(f"[bold red]Error sending message:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
     def approve_plan(self, session_id: str) -> Dict[str, Any]:
-        """Approves a pending plan in a session.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-        
-        Returns:
-            Dict containing the response
-        """
+        """Approves a pending plan in a session."""
         url = f"{self.BASE_URL}/sessions/{session_id}:approvePlan"
         
         try:
@@ -254,25 +202,15 @@ class JulesClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error approving plan:[/bold red] {e}")
+            self._print(f"[bold red]Error approving plan:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
     def list_activities(self, session_id: str, page_size: int = 50, 
                        page_token: Optional[str] = None,
                        create_time: Optional[str] = None) -> Dict[str, Any]:
-        """Lists all activities for a session.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-            page_size: Number of activities to return (1-100). Defaults to 50.
-            page_token: Page token from a previous ListActivities response.
-            create_time: Filter activities created after this timestamp
-        
-        Returns:
-            Dict containing 'activities' list and optional 'nextPageToken'
-        """
+        """Lists all activities for a session."""
         url = f"{self.BASE_URL}/sessions/{session_id}/activities"
         params = {"pageSize": page_size}
         if page_token:
@@ -285,41 +223,40 @@ class JulesClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error listing activities:[/bold red] {e}")
+            self._print(f"[bold red]Error listing activities:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
     def get_activity(self, session_id: str, activity_id: str) -> Dict[str, Any]:
-        """Retrieves a single activity by ID.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-            activity_id: The activity ID
-        
-        Returns:
-            Dict containing activity details
-        """
+        """Retrieves a single activity by ID."""
         url = f"{self.BASE_URL}/sessions/{session_id}/activities/{activity_id}"
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            console.print(f"[bold red]Error getting activity:[/bold red] {e}")
+            self._print(f"[bold red]Error getting activity:[/bold red] {e}")
             if hasattr(e, 'response') and e.response is not None:
-                console.print(f"Details: {e.response.content.decode()}")
+                self._print(f"Details: {e.response.content.decode()}")
             raise
 
-    def poll_session(self, session_name: str):
+    def poll_session(self, session_name: str, plain: bool = False, timeout: int = 300):
         """Polls the session for activities and status updates."""
         activities_url = f"{self.BASE_URL}/{session_name}/activities"
         session_url = f"{self.BASE_URL}/{session_name}"
         
         seen_activities = set()
+        start_time = time.time()
         
-        with Live(Spinner("dots", text="Jules is thinking...", style="cyan"), refresh_per_second=4) as live:
+        def run_polling(live_ctx=None):
             while True:
+                if time.time() - start_time > timeout:
+                    msg = f"Polling timed out after {timeout}s."
+                    if live_ctx: live_ctx.update(f"[red]{msg}[/red]")
+                    else: print(msg)
+                    break
+
                 # 1. Check Session Status
                 try:
                     sess_resp = requests.get(session_url, headers=self.headers)
@@ -327,7 +264,8 @@ class JulesClient:
                     session_data = sess_resp.json()
                     state = session_data.get("state", "STATE_UNSPECIFIED")
                 except Exception as e:
-                    live.update(f"[red]Error checking status: {e}[/red]")
+                    if live_ctx: live_ctx.update(f"[red]Error checking status: {e}[/red]")
+                    else: print(f"Error checking status: {e}")
                     break
 
                 # 2. Fetch Activities
@@ -345,9 +283,13 @@ class JulesClient:
                             description = activity.get("description", "No description")
                             originator = activity.get("originator", "SYSTEM")
                             
-                            # Update the live display with the latest activity
-                            live.update(Panel(Markdown(description), title=f"[bold {('green' if originator == 'AGENT' else 'blue')}]{originator}[/bold]"))
-                            console.print(f"[{time.strftime('%H:%M:%S')}] {description}")
+                            if live_ctx:
+                                # Update the live display with the latest activity
+                                live_ctx.update(Panel(Markdown(description), title=f"[bold {('green' if originator == 'AGENT' else 'blue')}]{originator}[/bold]"))
+                                console.print(f"[{time.strftime('%H:%M:%S')}] {description}")
+                            else:
+                                print(f"[{time.strftime('%H:%M:%S')}] {originator}: {description}")
+
                             seen_activities.add(act_id)
 
                 except Exception:
@@ -355,24 +297,48 @@ class JulesClient:
 
                 # 3. Handle Terminal States
                 if state in ["COMPLETED", "FAILED", "CANCELLED"]:
-                    live.stop()
-                    console.print(Panel(f"Session finished with state: [bold]{state}[/bold]", style="green" if state == "COMPLETED" else "red"))
+                    if live_ctx:
+                        live_ctx.stop()
+                        console.print(Panel(f"Session finished with state: [bold]{state}[/bold]", style="green" if state == "COMPLETED" else "red"))
+                    else:
+                        print(f"Session finished with state: {state}")
                     
                     # If completed, check for outputs (files/diffs)
                     if state == "COMPLETED" and "outputs" in session_data:
-                        self.display_outputs(session_data["outputs"])
+                        self.display_outputs(session_data["outputs"], plain=plain)
                     break
                 
                 if state == "AWAITING_USER_FEEDBACK":
-                    live.stop()
-                    console.print("[bold yellow]Jules is waiting for your feedback (Plan Approval or Questions).[/bold yellow]")
-                    console.print(f"Please visit the web URL to interact: {session_data.get('url', 'URL not found')}")
+                    if live_ctx:
+                        live_ctx.stop()
+                        console.print("[bold yellow]Jules is waiting for your feedback (Plan Approval or Questions).[/bold yellow]")
+                        console.print(f"Please visit the web URL to interact: {session_data.get('url', 'URL not found')}")
+                    else:
+                        print("Jules is waiting for your feedback (Plan Approval or Questions).")
+                        print(f"Please visit the web URL to interact: {session_data.get('url', 'URL not found')}")
                     break
 
                 time.sleep(2) # Poll interval
 
-    def display_outputs(self, outputs: List[Dict[str, Any]]):
+        if plain:
+            run_polling()
+        else:
+            with Live(Spinner("dots", text="Jules is thinking...", style="cyan"), refresh_per_second=4) as live:
+                run_polling(live)
+
+    def display_outputs(self, outputs: List[Dict[str, Any]], plain: bool = False):
         """Displays output artifacts or diffs."""
+        if plain:
+            print("\n--- Session Outputs ---")
+            for output in outputs:
+                if "pullRequest" in output:
+                    print(f"Type: Pull Request | URL: {output['pullRequest'].get('url', 'No URL')}")
+                elif "fileChange" in output:
+                    print(f"Type: File Change | Details: Modified files available in session context")
+                else:
+                    print(f"Type: Unknown | Details: {output}")
+            return
+
         table = Table(title="Session Outputs")
         table.add_column("Type", style="cyan")
         table.add_column("Details", style="white")
@@ -401,24 +367,7 @@ def main():
 Examples:
   # Create a repoless session
   python jules_client.py create --prompt "Build a FastAPI server"
-  
-  # Create a session with a repository
-  python jules_client.py create --prompt "Add tests" --repo myorg/myrepo --branch develop
-  
-  # List all sessions
-  python jules_client.py list-sessions
-  
-  # Get session details
-  python jules_client.py get-session --session-id 1234567
-  
-  # Send a message to a session
-  python jules_client.py send-message --session-id 1234567 --message "Add more tests"
-  
-  # Approve a plan
-  python jules_client.py approve-plan --session-id 1234567
-  
-  # List sources
-  python jules_client.py list-sources
+...
         """
     )
     
@@ -477,6 +426,8 @@ Examples:
     
     # Global arguments
     parser.add_argument("--api-key", help="Jules API Key")
+    parser.add_argument("--plain", action="store_true", help="Output plain text instead of Rich-formatted UI")
+    parser.add_argument("--timeout", type=int, default=300, help="Max polling time in seconds (default: 300)")
     
     args = parser.parse_args()
     
@@ -489,10 +440,11 @@ Examples:
     api_key = args.api_key or os.getenv("JULES_API_KEY")
 
     if not api_key:
-        console.print("[bold red]Error:[/bold red] JULES_API_KEY not found in environment or arguments.")
+        if args.plain: print("Error: JULES_API_KEY not found in environment or arguments.")
+        else: console.print("[bold red]Error:[/bold red] JULES_API_KEY not found in environment or arguments.")
         return
 
-    client = JulesClient(api_key)
+    client = JulesClient(api_key, plain=args.plain)
 
     try:
         if args.command == "create":
@@ -504,18 +456,22 @@ Examples:
                         context_content = f.read()
                         full_prompt += f"\n\nContext from {args.context_file}:\n{context_content}"
                 except FileNotFoundError:
-                    console.print(f"[bold red]Error:[/bold red] Context file {args.context_file} not found.")
+                    if args.plain: print(f"Error: Context file {args.context_file} not found.")
+                    else: console.print(f"[bold red]Error:[/bold red] Context file {args.context_file} not found.")
                     return
 
             source_id = None
             if args.repo:
-                console.print(f"[blue]Resolving source for repo: {args.repo}...[/blue]")
+                if args.plain: print(f"Resolving source for repo: {args.repo}...")
+                else: console.print(f"[blue]Resolving source for repo: {args.repo}...[/blue]")
                 source_id = client.get_source_id(args.repo)
-                console.print(f"[green]Found source ID: {source_id}[/green]")
+                if args.plain: print(f"Found source ID: {source_id}")
+                else: console.print(f"[green]Found source ID: {source_id}[/green]")
 
             automation_mode = "AUTO_CREATE_PR" if args.auto_pr else "AUTOMATION_MODE_UNSPECIFIED"
             
-            console.print("[blue]Initiating Jules session...[/blue]")
+            if args.plain: print("Initiating Jules session...")
+            else: console.print("[blue]Initiating Jules session...[/blue]")
             session = client.create_session(
                 prompt=full_prompt,
                 title=args.title,
@@ -528,112 +484,139 @@ Examples:
             session_name = session.get("name")
             session_url = session.get("url")
 
-            console.print(f"[bold green]Session Created![/bold green] ID: {session_name}")
-            if session_url:
-                console.print(f"Web URL: {session_url}")
+            if args.plain:
+                print(f"Session Created! ID: {session_name}")
+                if session_url: print(f"Web URL: {session_url}")
+            else:
+                console.print(f"[bold green]Session Created![/bold green] ID: {session_name}")
+                if session_url: console.print(f"Web URL: {session_url}")
             
             if not args.no_poll:
-                console.print("[blue]Streaming activities...[/blue]")
-                client.poll_session(session_name)
+                if args.plain: print("Streaming activities...")
+                else: console.print("[blue]Streaming activities...[/blue]")
+                client.poll_session(session_name, plain=args.plain, timeout=args.timeout)
             
         elif args.command == "list-sessions":
             result = client.list_sessions(page_size=args.page_size)
             sessions = result.get("sessions", [])
             
             if not sessions:
-                console.print("[yellow]No sessions found.[/yellow]")
+                if args.plain: print("No sessions found.")
+                else: console.print("[yellow]No sessions found.[/yellow]")
             else:
-                table = Table(title="Sessions")
-                table.add_column("ID", style="cyan")
-                table.add_column("Title", style="white")
-                table.add_column("State", style="green")
-                table.add_column("Created", style="blue")
-                
-                for session in sessions:
-                    table.add_row(
-                        session.get("name", ""),
-                        session.get("title", ""),
-                        session.get("state", ""),
-                        session.get("createTime", "")
-                    )
-                
-                console.print(table)
+                if args.plain:
+                    print("--- Sessions ---")
+                    for s in sessions:
+                        print(f"ID: {s.get('name')} | Title: {s.get('title')} | State: {s.get('state')}")
+                else:
+                    table = Table(title="Sessions")
+                    table.add_column("ID", style="cyan")
+                    table.add_column("Title", style="white")
+                    table.add_column("State", style="green")
+                    table.add_column("Created", style="blue")
+
+                    for session in sessions:
+                        table.add_row(
+                            session.get("name", ""),
+                            session.get("title", ""),
+                            session.get("state", ""),
+                            session.get("createTime", "")
+                        )
+
+                    console.print(table)
                 
                 if "nextPageToken" in result:
-                    console.print(f"\n[yellow]More results available. Use --page-token={result['nextPageToken']}[/yellow]")
+                    if args.plain: print(f"\nMore results available. Use next page token: {result['nextPageToken']}")
+                    else: console.print(f"\n[yellow]More results available. Use --page-token={result['nextPageToken']}[/yellow]")
         
         elif args.command == "get-session":
             session = client.get_session(args.session_id)
-            console.print(json.dumps(session, indent=2))
+            print(json.dumps(session, indent=2))
         
         elif args.command == "delete-session":
             client.delete_session(args.session_id)
-            console.print(f"[green]Session {args.session_id} deleted successfully.[/green]")
+            if args.plain: print(f"Session {args.session_id} deleted successfully.")
+            else: console.print(f"[green]Session {args.session_id} deleted successfully.[/green]")
         
         elif args.command == "send-message":
             client.send_message(args.session_id, args.message)
-            console.print(f"[green]Message sent to session {args.session_id}[/green]")
+            if args.plain: print(f"Message sent to session {args.session_id}")
+            else: console.print(f"[green]Message sent to session {args.session_id}[/green]")
         
         elif args.command == "approve-plan":
             client.approve_plan(args.session_id)
-            console.print(f"[green]Plan approved for session {args.session_id}[/green]")
+            if args.plain: print(f"Plan approved for session {args.session_id}")
+            else: console.print(f"[green]Plan approved for session {args.session_id}[/green]")
         
         elif args.command == "list-activities":
             result = client.list_activities(args.session_id, page_size=args.page_size)
             activities = result.get("activities", [])
             
             if not activities:
-                console.print("[yellow]No activities found.[/yellow]")
+                if args.plain: print("No activities found.")
+                else: console.print("[yellow]No activities found.[/yellow]")
             else:
                 for activity in activities:
                     originator = activity.get("originator", "system")
                     description = activity.get("description", "No description")
                     create_time = activity.get("createTime", "")
                     
-                    color = "green" if originator == "agent" else "blue" if originator == "user" else "white"
-                    console.print(f"[{color}][{create_time}] {originator.upper()}: {description}[/{color}]")
+                    if args.plain:
+                        print(f"[{create_time}] {originator.upper()}: {description}")
+                    else:
+                        color = "green" if originator == "agent" else "blue" if originator == "user" else "white"
+                        console.print(f"[{color}][{create_time}] {originator.upper()}: {description}[/{color}]")
         
         elif args.command == "get-activity":
             activity = client.get_activity(args.session_id, args.activity_id)
-            console.print(json.dumps(activity, indent=2))
+            print(json.dumps(activity, indent=2))
         
         elif args.command == "list-sources":
             result = client.list_sources(page_size=args.page_size, filter_expr=args.filter)
             sources = result.get("sources", [])
             
             if not sources:
-                console.print("[yellow]No sources found.[/yellow]")
+                if args.plain: print("No sources found.")
+                else: console.print("[yellow]No sources found.[/yellow]")
             else:
-                table = Table(title="Connected Sources")
-                table.add_column("Name", style="cyan")
-                table.add_column("Owner/Repo", style="white")
-                table.add_column("Default Branch", style="green")
-                table.add_column("Private", style="yellow")
-                
-                for source in sources:
-                    github_repo = source.get("githubRepo", {})
-                    owner = github_repo.get("owner", "")
-                    repo = github_repo.get("repo", "")
-                    default_branch = github_repo.get("defaultBranch", {}).get("displayName", "")
-                    is_private = "Yes" if github_repo.get("isPrivate", False) else "No"
+                if args.plain:
+                    print("--- Connected Sources ---")
+                    for s in sources:
+                        github_repo = s.get("githubRepo", {})
+                        print(f"Name: {s.get('name')} | Repo: {github_repo.get('owner')}/{github_repo.get('repo')}")
+                else:
+                    table = Table(title="Connected Sources")
+                    table.add_column("Name", style="cyan")
+                    table.add_column("Owner/Repo", style="white")
+                    table.add_column("Default Branch", style="green")
+                    table.add_column("Private", style="yellow")
                     
-                    table.add_row(
-                        source.get("name", ""),
-                        f"{owner}/{repo}",
-                        default_branch,
-                        is_private
-                    )
-                
-                console.print(table)
+                    for source in sources:
+                        github_repo = source.get("githubRepo", {})
+                        owner = github_repo.get("owner", "")
+                        repo = github_repo.get("repo", "")
+                        default_branch = github_repo.get("defaultBranch", {}).get("displayName", "")
+                        is_private = "Yes" if github_repo.get("isPrivate", False) else "No"
+
+                        table.add_row(
+                            source.get("name", ""),
+                            f"{owner}/{repo}",
+                            default_branch,
+                            is_private
+                        )
+
+                    console.print(table)
         
         elif args.command == "get-source":
             source = client.get_source(args.source_id)
-            console.print(json.dumps(source, indent=2))
+            print(json.dumps(source, indent=2))
 
     except KeyboardInterrupt:
-        console.print("\n[bold yellow]Operation cancelled by user.[/bold yellow]")
+        if args.plain: print("\nOperation cancelled by user.")
+        else: console.print("\n[bold yellow]Operation cancelled by user.[/bold yellow]")
     except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {e}")
+        if args.plain: print(f"Error: {e}")
+        else: console.print(f"[bold red]Error:[/bold red] {e}")
 
 if __name__ == "__main__":
     main()
