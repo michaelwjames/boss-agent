@@ -33,10 +33,19 @@ help:
 	@echo "    make safe-gemini QUERY=x - Run safe Gemini query"
 	@echo "    make linear-task TITLE=x DESCRIPTION=x - Create Linear task"
 	@echo "    make vercel-logs         - Fetch Vercel deployment logs"
+	@echo "    make gemini-search QUERY=x - Run web search via Gemini"
+	@echo "    make gemini-research QUERY=x - Run deep research via Gemini"
+	@echo "    make gemini-image QUERY=x - Generate image via Gemini"
 	@echo ""
-	@echo "  Jules Agent:"
-	@echo "    make jules-help          - Show help for Jules client"
-	@echo "    make jules A="args"      - Run Jules client with arguments"
+	@echo "  Jules Agent (API):"
+	@echo "    make jules-list-sources  - List connected Jules sources"
+	@echo "    make jules-list-sessions - List Jules sessions"
+	@echo "    make jules-get-session ID=x - Get Jules session details"
+	@echo "    make jules-delete-session ID=x - Delete Jules session"
+	@echo "    make jules-send-message ID=x MESSAGE=y - Send message to session"
+	@echo "    make jules-approve-plan ID=x - Approve Jules plan"
+	@echo "    make jules-list-activities ID=x - List Jules activities"
+	@echo "    make jules-create-session PROMPT=x [REPO=y] [TITLE=z] [MODE=a] - Create Jules session"
 
 # --- System ---
 status:
@@ -99,9 +108,52 @@ linear-task:
 vercel-logs:
 	node skills/vercel_wrapper.js logs
 
-# --- Jules Agent ---
-jules-help:
-	python3 skills/jules-agent/jules_client.py --help
+gemini-search:
+	npx tsx skills/gemini_wrapper.ts search "$(QUERY)"
 
-jules:
-	python3 skills/jules-agent/jules_client.py $(A)
+gemini-research:
+	npx tsx skills/gemini_wrapper.ts research "$(QUERY)"
+
+gemini-image:
+	npx tsx skills/gemini_wrapper.ts image "$(QUERY)"
+
+# --- Jules Agent (Direct API) ---
+JULES_BASE_URL = https://jules.googleapis.com/v1alpha
+
+jules-list-sources:
+	@curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sources?pageSize=$(or $(SIZE),30) | jq .
+
+jules-list-sessions:
+	@curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sessions?pageSize=$(or $(SIZE),30) | jq .
+
+jules-get-session:
+	@curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sessions/$(ID) | jq .
+
+jules-delete-session:
+	@curl -s -X DELETE -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sessions/$(ID)
+
+jules-send-message:
+	@curl -s -X POST -H "x-goog-api-key: $(JULES_API_KEY)" -H "Content-Type: application/json" \
+		-d '{"prompt": "$(MESSAGE)"}' \
+		$(JULES_BASE_URL)/sessions/$(ID):sendMessage | jq .
+
+jules-approve-plan:
+	@curl -s -X POST -H "x-goog-api-key: $(JULES_API_KEY)" -H "Content-Type: application/json" \
+		-d '{}' \
+		$(JULES_BASE_URL)/sessions/$(ID):approvePlan | jq .
+
+jules-list-activities:
+	@curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sessions/$(ID)/activities?pageSize=$(or $(SIZE),50) | jq .
+
+jules-create-session:
+	@if [ -n "$(REPO)" ]; then \
+		SOURCE_ID=$$(curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sources?pageSize=100 | jq -r '.sources[] | select(.githubRepo.owner + "/" + .githubRepo.repo == "$(REPO)") | .name'); \
+		if [ -z "$$SOURCE_ID" ]; then echo "Error: Source for $(REPO) not found."; exit 1; fi; \
+		curl -s -X POST -H "x-goog-api-key: $(JULES_API_KEY)" -H "Content-Type: application/json" \
+			-d '{"prompt": "$(PROMPT)", "title": "$(or $(TITLE),Session for $(REPO))", "automationMode": "$(or $(MODE),AUTOMATION_MODE_UNSPECIFIED)", "sourceContext": {"source": "'$$SOURCE_ID'", "githubRepoContext": {"startingBranch": "$(or $(BRANCH),main)"}}}' \
+			$(JULES_BASE_URL)/sessions | jq .; \
+	else \
+		curl -s -X POST -H "x-goog-api-key: $(JULES_API_KEY)" -H "Content-Type: application/json" \
+			-d '{"prompt": "$(PROMPT)", "title": "$(or $(TITLE),Repoless Session)", "automationMode": "$(or $(MODE),AUTOMATION_MODE_UNSPECIFIED)"}' \
+			$(JULES_BASE_URL)/sessions | jq .; \
+	fi

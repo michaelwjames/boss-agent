@@ -52,27 +52,6 @@ export class ToolRegistry {
         const result = await this.make.run(args.target, args.args);
         return `STDOUT: ${result.stdout}\nSTDERR: ${result.stderr}\nExit Code: ${result.exitCode}`;
       }
-      case 'jules': {
-        let commandArgs = `${args.action} --plain`;
-        if (args.prompt) commandArgs += ` --prompt "${args.prompt.replace(/"/g, '\\"')}"`;
-
-        let repo = args.repo;
-        if (repo && this.nomenclature) {
-          const { exact } = this.nomenclature.resolveRepoName(repo);
-          if (exact) {
-            console.log(`[NOMENCLATURE] Automatically corrected repo ${repo} to ${exact.name}`);
-            repo = exact.name;
-          }
-        }
-        if (repo) commandArgs += ` --repo ${repo}`;
-
-        if (args.sessionId) commandArgs += ` --session-id ${args.sessionId}`;
-        if (args.action === 'send-message' && args.prompt) commandArgs += ` --message "${args.prompt.replace(/"/g, '\\"')}"`;
-        if (args.extraArgs) commandArgs += ` ${args.extraArgs}`;
-
-        const result = await this.make.run('jules', { A: commandArgs });
-        return `STDOUT: ${result.stdout}\nSTDERR: ${result.stderr}\nExit Code: ${result.exitCode}`;
-      }
       case 'write_note': {
         return await this.fs.writeNote(args.filename, args.content);
       }
