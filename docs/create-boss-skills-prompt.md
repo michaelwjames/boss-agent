@@ -1,0 +1,7 @@
+Please perform a careful analysis of this agent and the infrastructure built around it.
+
+I want to add a new (meta)skill (see attached files for context):
+
+It is for creating new skills SPECIFICALLY for the boss-agent. So that means a skill that uses a script to register a new skill in the skills catalogue in the vault, register it in the makefile with any relevant commands, register it in the tools.js file so that the boss agent can actually use them, generate a stub folder with the new skill's name (e.g. repo-testing or pdf-decryptor) that includes the attached agent_skills_spec.md and SKILL.md files as reference files. The boss agent then needs to generate a SKILL_PROMPT.md file which quotes and elaborates (within reason - no hallucinations) the user's specs/request for the skill contents: this is the instructions file for generating the skill, but it IS NOT the skill itself: the actual skill creation is outsourced. At this point, the boss agent needs to initiate a repoless session in Jules (using the jules-agent skill) and upload the newly-created skill folder, with its reference docs and the SKILL_PROMPT.md file, as context for Jules (this should be possible via the Jules API?! - it's possible in the web GUI). 
+
+Call this skill "create-boss-skills"
