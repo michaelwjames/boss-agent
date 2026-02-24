@@ -10,7 +10,7 @@ This document provides comprehensive examples of using the Jules Terminal Client
 - [Source Management](#source-management)
 - [Interactive Workflows](#interactive-workflows)
 - [Advanced Usage](#advanced-usage)
-- [Python API Examples](#python-api-examples)
+- [TypeScript API Examples](#typescript-api-examples)
 
 ## Setup
 
@@ -33,7 +33,7 @@ Get your API key from: https://jules.google.com/settings
 ### Installation
 
 ```bash
-pip install -r requirements.txt
+pnpm add axios commander chalk ora cli-table3
 ```
 
 ## Session Management
@@ -45,7 +45,7 @@ pip install -r requirements.txt
 Create a standalone session without a repository:
 
 ```bash
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Create a Snake game in Python using pygame"
 ```
 
@@ -56,7 +56,7 @@ This creates an ephemeral environment where Jules can write code from scratch.
 Work with an existing GitHub repository:
 
 ```bash
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Add comprehensive unit tests for the authentication module" \
   --repo myorg/myrepo \
   --branch develop
@@ -65,7 +65,7 @@ python jules_client.py create \
 #### 3. Session with Custom Title
 
 ```bash
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Refactor the database layer to use async/await" \
   --title "Database Async Refactor" \
   --repo myorg/myrepo
@@ -76,7 +76,7 @@ python jules_client.py create \
 For critical changes, require manual plan approval:
 
 ```bash
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Migrate from PostgreSQL to MongoDB" \
   --repo myorg/myrepo \
   --require-approval
@@ -89,7 +89,7 @@ Jules will generate a plan and wait for your approval before executing.
 Automatically create a pull request when code is ready:
 
 ```bash
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Add dark mode support to the UI" \
   --repo myorg/myrepo \
   --auto-pr
@@ -100,7 +100,7 @@ python jules_client.py create \
 Include additional context from a file:
 
 ```bash
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Fix the bug described in the report" \
   --context-file bug_report.txt \
   --repo myorg/myrepo
@@ -113,7 +113,7 @@ The content of `bug_report.txt` will be appended to the prompt.
 Create a session but don't wait for completion:
 
 ```bash
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Add logging to all API endpoints" \
   --repo myorg/myrepo \
   --no-poll
@@ -126,7 +126,7 @@ You can check the session status later using `get-session`.
 #### Basic List
 
 ```bash
-python jules_client.py list-sessions
+npx tsx skills/jules-agent/jules_client.ts list-sessions
 ```
 
 Output:
@@ -142,7 +142,7 @@ Output:
 #### List with Custom Page Size
 
 ```bash
-python jules_client.py list-sessions --page-size 50
+npx tsx skills/jules-agent/jules_client.ts list-sessions --page-size 50
 ```
 
 ### Getting Session Details
@@ -150,7 +150,7 @@ python jules_client.py list-sessions --page-size 50
 Retrieve full details about a specific session:
 
 ```bash
-python jules_client.py get-session --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts get-session --session-id 1234567
 ```
 
 Output includes:
@@ -188,7 +188,7 @@ Example output:
 Remove a session from your account:
 
 ```bash
-python jules_client.py delete-session --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts delete-session --session-id 1234567
 ```
 
 ## Activity Monitoring
@@ -198,7 +198,7 @@ python jules_client.py delete-session --session-id 1234567
 View all activities for a session:
 
 ```bash
-python jules_client.py list-activities --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts list-activities --session-id 1234567
 ```
 
 Output shows chronological events:
@@ -214,7 +214,7 @@ Output shows chronological events:
 ### List Activities with Pagination
 
 ```bash
-python jules_client.py list-activities --session-id 1234567 --page-size 100
+npx tsx skills/jules-agent/jules_client.ts list-activities --session-id 1234567 --page-size 100
 ```
 
 ### Getting Activity Details
@@ -222,7 +222,7 @@ python jules_client.py list-activities --session-id 1234567 --page-size 100
 Retrieve detailed information about a specific activity:
 
 ```bash
-python jules_client.py get-activity --session-id 1234567 --activity-id act123
+npx tsx skills/jules-agent/jules_client.ts get-activity --session-id 1234567 --activity-id act123
 ```
 
 This returns full activity data including:
@@ -261,7 +261,7 @@ Example output with code changes:
 View all connected GitHub repositories:
 
 ```bash
-python jules_client.py list-sources
+npx tsx skills/jules-agent/jules_client.ts list-sources
 ```
 
 Output:
@@ -277,7 +277,7 @@ Output:
 ### List Sources with Pagination
 
 ```bash
-python jules_client.py list-sources --page-size 50
+npx tsx skills/jules-agent/jules_client.ts list-sources --page-size 50
 ```
 
 ### Filter Sources
@@ -286,11 +286,11 @@ Find specific repositories using filter expressions:
 
 ```bash
 # Get a specific source
-python jules_client.py list-sources \
+npx tsx skills/jules-agent/jules_client.ts list-sources \
   --filter "name=sources/github-myorg-myrepo"
 
 # Get multiple sources
-python jules_client.py list-sources \
+npx tsx skills/jules-agent/jules_client.ts list-sources \
   --filter "name=sources/source1 OR name=sources/source2"
 ```
 
@@ -299,7 +299,7 @@ python jules_client.py list-sources \
 Retrieve detailed information including all branches:
 
 ```bash
-python jules_client.py get-source --source-id github-myorg-myrepo
+npx tsx skills/jules-agent/jules_client.ts get-source --source-id github-myorg-myrepo
 ```
 
 Output includes:
@@ -336,7 +336,7 @@ Example output:
 
 ```bash
 # Step 1: Create session requiring approval
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Refactor the payment processing module" \
   --repo myorg/myrepo \
   --require-approval
@@ -345,10 +345,10 @@ python jules_client.py create \
 # Session state: AWAITING_PLAN_APPROVAL
 
 # Step 2: Review the plan (check activities or web UI)
-python jules_client.py list-activities --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts list-activities --session-id 1234567
 
 # Step 3: Approve the plan
-python jules_client.py approve-plan --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts approve-plan --session-id 1234567
 
 # Jules will now execute the plan
 ```
@@ -357,40 +357,40 @@ python jules_client.py approve-plan --session-id 1234567
 
 ```bash
 # Step 1: Create initial session
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Add user authentication" \
   --repo myorg/myrepo \
   --no-poll
 
 # Step 2: Monitor progress
-python jules_client.py list-activities --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts list-activities --session-id 1234567
 
 # Step 3: Send additional instructions
-python jules_client.py send-message \
+npx tsx skills/jules-agent/jules_client.ts send-message \
   --session-id 1234567 \
   --message "Please also add OAuth2 support with Google and GitHub providers"
 
 # Step 4: Send follow-up
-python jules_client.py send-message \
+npx tsx skills/jules-agent/jules_client.ts send-message \
   --session-id 1234567 \
   --message "Add rate limiting to the login endpoint"
 
 # Step 5: Check final status
-python jules_client.py get-session --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts get-session --session-id 1234567
 ```
 
 ### Workflow 3: Multi-Branch Development
 
 ```bash
 # Work on feature branch
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Implement new dashboard UI" \
   --repo myorg/myrepo \
   --branch feature/dashboard \
   --auto-pr
 
 # Work on different branch
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Add API documentation" \
   --repo myorg/myrepo \
   --branch feature/docs \
@@ -420,7 +420,7 @@ Stack trace:
 EOF
 
 # Create session with context
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Fix the login bug" \
   --context-file bug_report.txt \
   --repo myorg/myrepo \
@@ -443,16 +443,16 @@ python jules_client.py list-sessions --page-size 10 > page1.json
 
 ```bash
 # Create session without polling
-python jules_client.py create \
+npx tsx skills/jules-agent/jules_client.ts create \
   --prompt "Migrate entire codebase to TypeScript" \
   --repo myorg/myrepo \
   --no-poll
 
 # Periodically check status
-watch -n 30 'python jules_client.py get-session --session-id 1234567'
+watch -n 30 'npx tsx skills/jules-agent/jules_client.ts get-session --session-id 1234567'
 
 # Or monitor activities
-watch -n 10 'python jules_client.py list-activities --session-id 1234567'
+watch -n 10 'npx tsx skills/jules-agent/jules_client.ts list-activities --session-id 1234567'
 ```
 
 ### Batch Operations
@@ -468,7 +468,7 @@ TASKS=(
 )
 
 for task in "${TASKS[@]}"; do
-  python jules_client.py create \
+  npx tsx skills/jules-agent/jules_client.ts create \
     --prompt "$task" \
     --repo myorg/myrepo \
     --no-poll
@@ -476,246 +476,263 @@ for task in "${TASKS[@]}"; do
 done
 
 # List all sessions
-python jules_client.py list-sessions
+npx tsx skills/jules-agent/jules_client.ts list-sessions
 ```
 
-## Python API Examples
+## TypeScript API Examples
 
 ### Basic Usage
 
-```python
-from jules_client import JulesClient
-import os
+```typescript
+import { JulesClient } from './jules_client';
+import * as dotenv from 'dotenv';
 
-# Initialize client
-api_key = os.getenv("JULES_API_KEY")
-client = JulesClient(api_key)
+dotenv.config();
 
-# Create a repoless session
-session = client.create_session(
-    prompt="Build a REST API for a todo app using FastAPI"
-)
+// Initialize client
+const apiKey = process.env.JULES_API_KEY!;
+const client = new JulesClient(apiKey);
 
-print(f"Session created: {session['name']}")
-print(f"Web URL: {session['url']}")
+// Create a repoless session
+const session = await client.createSession({
+    prompt: "Build a REST API for a todo app using FastAPI"
+});
+
+console.log(`Session created: ${session.name}`);
+console.log(`Web URL: ${session.url}`);
 ```
 
 ### Repository Session with Options
 
-```python
-from jules_client import JulesClient
+```typescript
+import { JulesClient } from './jules_client';
 
-client = JulesClient(api_key="your-api-key")
+const client = new JulesClient('your-api-key');
 
-# Create session with all options
-session = client.create_session(
-    prompt="Add comprehensive error handling to the API",
-    title="API Error Handling",
-    source_id="sources/github-myorg-myrepo",
-    starting_branch="develop",
-    require_plan_approval=True,
-    automation_mode="AUTO_CREATE_PR"
-)
+// Create session with all options
+const session = await client.createSession({
+    prompt: "Add comprehensive error handling to the API",
+    title: "API Error Handling",
+    sourceId: "sources/github-myorg-myrepo",
+    startingBranch: "develop",
+    requirePlanApproval: true,
+    automationMode: "AUTO_CREATE_PR"
+});
 
-session_id = session["name"].split("/")[1]
-print(f"Session ID: {session_id}")
+const sessionId = session.name.split("/")[1];
+console.log(`Session ID: ${sessionId}`);
 ```
 
 ### Interactive Session Management
 
-```python
-from jules_client import JulesClient
-import time
+```typescript
+import { JulesClient } from './jules_client';
 
-client = JulesClient(api_key="your-api-key")
+const client = new JulesClient('your-api-key');
 
-# Create session
-session = client.create_session(
-    prompt="Implement user authentication",
-    source_id="sources/github-myorg-myrepo"
-)
+// Create session
+const session = await client.createSession({
+    prompt: "Implement user authentication",
+    sourceId: "sources/github-myorg-myrepo"
+});
 
-session_id = session["name"].split("/")[1]
+const sessionId = session.name.split("/")[1];
 
-# Wait a bit for plan generation
-time.sleep(10)
+// Wait a bit for plan generation
+await new Promise(resolve => setTimeout(resolve, 10000));
 
-# Send additional message
-client.send_message(
-    session_id=session_id,
-    message="Please use JWT tokens for authentication"
-)
+// Send additional message
+await client.sendMessage(sessionId, "Please use JWT tokens for authentication");
 
-# Monitor activities
-activities = client.list_activities(session_id=session_id)
-for activity in activities["activities"]:
-    print(f"{activity['originator']}: {activity['description']}")
+// Monitor activities
+const activities = await client.listActivities(sessionId);
+for (const activity of activities.activities || []) {
+    console.log(`${activity.originator}: ${activity.description}`);
+}
 ```
 
 ### Source Discovery
 
-```python
-from jules_client import JulesClient
+```typescript
+import { JulesClient } from './jules_client';
 
-client = JulesClient(api_key="your-api-key")
+const client = new JulesClient('your-api-key');
 
-# List all sources
-sources_data = client.list_sources(page_size=50)
-sources = sources_data["sources"]
+// List all sources
+const sourcesData = await client.listSources(50);
+const sources = sourcesData.sources || [];
 
-# Find a specific repo
-for source in sources:
-    github_repo = source.get("githubRepo", {})
-    owner = github_repo.get("owner")
-    repo = github_repo.get("repo")
+// Find a specific repo
+for (const source of sources) {
+    const githubRepo = source.githubRepo;
+    const owner = githubRepo?.owner;
+    const repo = githubRepo?.repo;
     
-    if owner == "myorg" and repo == "myrepo":
-        print(f"Found source: {source['name']}")
+    if (owner === "myorg" && repo === "myrepo") {
+        console.log(`Found source: ${source.name}`);
         
-        # Get detailed info including branches
-        details = client.get_source(source["id"])
-        branches = details["githubRepo"]["branches"]
+        // Get detailed info including branches
+        const details = await client.getSource(source.name);
+        const branches = details.githubRepo?.branches || [];
         
-        print("Available branches:")
-        for branch in branches:
-            print(f"  - {branch['displayName']}")
+        console.log("Available branches:");
+        for (const branch of branches) {
+            console.log(`  - ${branch.displayName}`);
+        }
+    }
+}
 ```
 
 ### Error Handling
 
-```python
-from jules_client import JulesClient
-import requests
+```typescript
+import { JulesClient } from './jules_client';
 
-client = JulesClient(api_key="your-api-key")
+const client = new JulesClient('your-api-key');
 
-try:
-    session = client.create_session(
-        prompt="Add tests",
-        source_id="sources/nonexistent-repo"
-    )
-except requests.exceptions.HTTPError as e:
-    print(f"HTTP Error: {e}")
-    print(f"Status Code: {e.response.status_code}")
-    print(f"Response: {e.response.content.decode()}")
-except ValueError as e:
-    print(f"Validation Error: {e}")
+try {
+    const session = await client.createSession({
+        prompt: "Add tests",
+        sourceId: "sources/nonexistent-repo"
+    });
+} catch (error: any) {
+    if (error.response) {
+        console.log(`HTTP Error: ${error.message}`);
+        console.log(`Status Code: ${error.response.status}`);
+        console.log(`Response: ${JSON.stringify(error.response.data)}`);
+    } else {
+        console.log(`Error: ${error.message}`);
+    }
+}
 ```
 
 ### Pagination Example
 
-```python
-from jules_client import JulesClient
+```typescript
+import { JulesClient } from './jules_client';
 
-client = JulesClient(api_key="your-api-key")
+const client = new JulesClient('your-api-key');
 
-# Get all sessions using pagination
-all_sessions = []
-page_token = None
+// Get all sessions using pagination
+let allSessions: any[] = [];
+let pageToken: string | undefined = undefined;
 
-while True:
-    result = client.list_sessions(page_size=30, page_token=page_token)
-    all_sessions.extend(result.get("sessions", []))
+while (true) {
+    const result = await client.listSessions(30, pageToken);
+    allSessions = allSessions.concat(result.sessions || []);
     
-    page_token = result.get("nextPageToken")
-    if not page_token:
-        break
+    pageToken = result.nextPageToken;
+    if (!pageToken) {
+        break;
+    }
+}
 
-print(f"Total sessions: {len(all_sessions)}")
+console.log(`Total sessions: ${allSessions.length}`);
 ```
 
 ### Activity Monitoring with Filtering
 
-```python
-from jules_client import JulesClient
-import time
+```typescript
+import { JulesClient } from './jules_client';
 
-client = JulesClient(api_key="your-api-key")
+const client = new JulesClient('your-api-key');
 
-session_id = "1234567"
-last_timestamp = None
+const sessionId = "1234567";
+let lastTimestamp: string | undefined = undefined;
 
-# Poll for new activities
-while True:
-    result = client.list_activities(
-        session_id=session_id,
-        page_size=50,
-        create_time=last_timestamp
-    )
+// Poll for new activities
+while (true) {
+    const result = await client.listActivities(
+        sessionId,
+        50,
+        undefined,
+        lastTimestamp
+    );
     
-    activities = result.get("activities", [])
+    const activities = result.activities || [];
     
-    for activity in activities:
-        print(f"{activity['createTime']}: {activity['description']}")
+    for (const activity of activities) {
+        console.log(`${activity.createTime}: ${activity.description}`);
         
-        # Check for artifacts
-        if "artifacts" in activity:
-            for artifact in activity["artifacts"]:
-                if "changeSet" in artifact:
-                    print("  Code changes detected!")
-                elif "bashOutput" in artifact:
-                    print(f"  Command output: {artifact['bashOutput']['output']}")
+        // Check for artifacts
+        if (activity.artifacts) {
+            for (const artifact of activity.artifacts) {
+                if (artifact.changeSet) {
+                    console.log("  Code changes detected!");
+                } else if (artifact.bashOutput) {
+                    console.log(`  Command output: ${artifact.bashOutput.output}`);
+                }
+            }
+        }
+    }
     
-    if activities:
-        last_timestamp = activities[-1]["createTime"]
+    if (activities.length > 0) {
+        lastTimestamp = activities[activities.length - 1].createTime;
+    }
     
-    # Check session state
-    session = client.get_session(session_id)
-    if session["state"] in ["COMPLETED", "FAILED"]:
-        print(f"Session finished: {session['state']}")
-        break
+    // Check session state
+    const session = await client.getSession(sessionId);
+    if (["COMPLETED", "FAILED"].includes(session.state)) {
+        console.log(`Session finished: ${session.state}`);
+        break;
+    }
     
-    time.sleep(5)
+    await new Promise(resolve => setTimeout(resolve, 5000));
+}
 ```
 
 ### Workflow Automation
 
-```python
-from jules_client import JulesClient
-import time
+```typescript
+import { JulesClient } from './jules_client';
 
-def create_and_monitor_session(client, prompt, repo, branch="main"):
-    """Create a session and monitor until completion."""
+async function createAndMonitorSession(client: JulesClient, prompt: string, repo: string, branch: string = "main") {
+    /** Create a session and monitor until completion. */
     
-    # Create session
-    session = client.create_session(
-        prompt=prompt,
-        source_id=f"sources/github-{repo.replace('/', '-')}",
-        starting_branch=branch,
-        automation_mode="AUTO_CREATE_PR"
-    )
+    // Create session
+    const session = await client.createSession({
+        prompt,
+        sourceId: `sources/github-${repo.replace('/', '-')}`,
+        startingBranch: branch,
+        automationMode: "AUTO_CREATE_PR"
+    });
     
-    session_id = session["name"].split("/")[1]
-    print(f"Created session {session_id}")
+    const sessionId = session.name.split("/")[1];
+    console.log(`Created session ${sessionId}`);
     
-    # Monitor until completion
-    while True:
-        session_data = client.get_session(session_id)
-        state = session_data["state"]
+    // Monitor until completion
+    while (true) {
+        const sessionData = await client.getSession(sessionId);
+        const state = sessionData.state;
         
-        print(f"Status: {state}")
+        console.log(`Status: ${state}`);
         
-        if state in ["COMPLETED", "FAILED"]:
-            # Get outputs
-            outputs = session_data.get("outputs", [])
-            for output in outputs:
-                if "pullRequest" in output:
-                    pr_url = output["pullRequest"]["url"]
-                    print(f"Pull Request: {pr_url}")
+        if (["COMPLETED", "FAILED"].includes(state)) {
+            // Get outputs
+            const outputs = sessionData.outputs || [];
+            for (const output of outputs) {
+                if (output.pullRequest) {
+                    const prUrl = output.pullRequest.url;
+                    console.log(`Pull Request: ${prUrl}`);
+                }
+            }
             
-            return session_data
+            return sessionData;
+        }
         
-        time.sleep(10)
+        await new Promise(resolve => setTimeout(resolve, 10000));
+    }
+}
 
-# Usage
-client = JulesClient(api_key="your-api-key")
+// Usage
+const client = new JulesClient("your-api-key");
 
-result = create_and_monitor_session(
+const result = await createAndMonitorSession(
     client,
-    prompt="Add logging to all API endpoints",
-    repo="myorg/myrepo",
-    branch="develop"
-)
+    "Add logging to all API endpoints",
+    "myorg/myrepo",
+    "develop"
+);
 ```
 
 ## Tips and Best Practices

@@ -101,7 +101,7 @@ vercel-logs:
 
 # --- Jules Agent ---
 jules-help:
-	python3 skills/jules-agent/jules_client.py --help
+	npx tsx skills/jules-agent/jules_client.ts --help
 
 jules:
-	python3 skills/jules-agent/jules_client.py $(A)
+	npx tsx skills/jules-agent/jules_client.ts $(A)

@@ -28,7 +28,7 @@ A comprehensive terminal interface for the Google Jules API. This skill provides
 
 ### Create Session
 ```bash
-python jules_client.py create --prompt "TASK_DESCRIPTION" [OPTIONS]
+npx tsx skills/jules-agent/jules_client.ts create --prompt "TASK_DESCRIPTION" [OPTIONS]
 ```
 
 **Options:**
@@ -45,47 +45,47 @@ python jules_client.py create --prompt "TASK_DESCRIPTION" [OPTIONS]
 
 ### List Sessions
 ```bash
-python jules_client.py list-sessions [--page-size N]
+npx tsx skills/jules-agent/jules_client.ts list-sessions [--page-size N]
 ```
 
 ### Get Session Details
 ```bash
-python jules_client.py get-session --session-id SESSION_ID
+npx tsx skills/jules-agent/jules_client.ts get-session --session-id SESSION_ID
 ```
 
 ### Delete Session
 ```bash
-python jules_client.py delete-session --session-id SESSION_ID
+npx tsx skills/jules-agent/jules_client.ts delete-session --session-id SESSION_ID
 ```
 
 ### Send Message to Session
 ```bash
-python jules_client.py send-message --session-id SESSION_ID --message "MESSAGE"
+npx tsx skills/jules-agent/jules_client.ts send-message --session-id SESSION_ID --message "MESSAGE"
 ```
 
 ### Approve Plan
 ```bash
-python jules_client.py approve-plan --session-id SESSION_ID
+npx tsx skills/jules-agent/jules_client.ts approve-plan --session-id SESSION_ID
 ```
 
 ### List Activities
 ```bash
-python jules_client.py list-activities --session-id SESSION_ID [--page-size N]
+npx tsx skills/jules-agent/jules_client.ts list-activities --session-id SESSION_ID [--page-size N]
 ```
 
 ### Get Activity Details
 ```bash
-python jules_client.py get-activity --session-id SESSION_ID --activity-id ACTIVITY_ID
+npx tsx skills/jules-agent/jules_client.ts get-activity --session-id SESSION_ID --activity-id ACTIVITY_ID
 ```
 
 ### List Sources
 ```bash
-python jules_client.py list-sources [--page-size N] [--filter "EXPRESSION"]
+npx tsx skills/jules-agent/jules_client.ts list-sources [--page-size N] [--filter "EXPRESSION"]
 ```
 
 ### Get Source Details
 ```bash
-python jules_client.py get-source --source-id SOURCE_ID
+npx tsx skills/jules-agent/jules_client.ts get-source --source-id SOURCE_ID
 ```
 
 ## Configuration
@@ -136,31 +136,31 @@ Completed sessions may include:
 
 ```bash
 # Create a repoless session
-python jules_client.py create --prompt "Build a FastAPI server with one endpoint"
+npx tsx skills/jules-agent/jules_client.ts create --prompt "Build a FastAPI server with one endpoint"
 
 # Create a session with repository
-python jules_client.py create --prompt "Add unit tests for auth module" --repo myorg/myrepo --branch develop
+npx tsx skills/jules-agent/jules_client.ts create --prompt "Add unit tests for auth module" --repo myorg/myrepo --branch develop
 
 # Create session with plan approval required
-python jules_client.py create --prompt "Refactor database layer" --repo myorg/myrepo --require-approval
+npx tsx skills/jules-agent/jules_client.ts create --prompt "Refactor database layer" --repo myorg/myrepo --require-approval
 
 # List all sessions
-python jules_client.py list-sessions
+npx tsx skills/jules-agent/jules_client.ts list-sessions
 
 # Get session details
-python jules_client.py get-session --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts get-session --session-id 1234567
 
 # Send follow-up message
-python jules_client.py send-message --session-id 1234567 --message "Also add integration tests"
+npx tsx skills/jules-agent/jules_client.ts send-message --session-id 1234567 --message "Also add integration tests"
 
 # Approve a pending plan
-python jules_client.py approve-plan --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts approve-plan --session-id 1234567
 
 # View session activities
-python jules_client.py list-activities --session-id 1234567
+npx tsx skills/jules-agent/jules_client.ts list-activities --session-id 1234567
 
 # List connected repositories
-python jules_client.py list-sources
+npx tsx skills/jules-agent/jules_client.ts list-sources
 ```
 
 ## Advanced Features
@@ -168,19 +168,19 @@ python jules_client.py list-sources
 ### Pagination
 All list commands support pagination:
 ```bash
-python jules_client.py list-sessions --page-size 50
+npx tsx skills/jules-agent/jules_client.ts list-sessions --page-size 50
 ```
 
 ### Filtering Sources
 Filter repositories using AIP-160 expressions:
 ```bash
-python jules_client.py list-sources --filter "name=sources/github-myorg-myrepo"
+npx tsx skills/jules-agent/jules_client.ts list-sources --filter "name=sources/github-myorg-myrepo"
 ```
 
 ### Context Files
 Include additional context from files:
 ```bash
-python jules_client.py create --prompt "Fix the bug" --context-file bug_report.txt --repo myorg/myrepo
+npx tsx skills/jules-agent/jules_client.ts create --prompt "Fix the bug" --context-file bug_report.txt --repo myorg/myrepo
 ```
 
 ### Automation Modes
@@ -188,7 +188,7 @@ python jules_client.py create --prompt "Fix the bug" --context-file bug_report.t
 - `AUTO_CREATE_PR`: Automatically create pull requests when code is ready
 
 ```bash
-python jules_client.py create --prompt "Add feature" --repo myorg/myrepo --auto-pr
+npx tsx skills/jules-agent/jules_client.ts create --prompt "Add feature" --repo myorg/myrepo --auto-pr
 ```
 
 ## Error Handling
@@ -202,28 +202,28 @@ The client provides detailed error messages for:
 
 All errors include HTTP status codes and detailed messages from the API.
 
-## Python API Usage
+## TypeScript API Usage
 
 The `JulesClient` class can also be used programmatically:
 
-```python
-from jules_client import JulesClient
+```typescript
+import { JulesClient } from './jules_client';
 
-client = JulesClient(api_key="your-api-key")
+const client = new JulesClient('your-api-key');
 
-# Create a session
-session = client.create_session(
-    prompt="Build a REST API",
-    title="API Development",
-    require_plan_approval=True
-)
+// Create a session
+const session = await client.createSession({
+    prompt: 'Build a REST API',
+    title: 'API Development',
+    requirePlanApproval: true
+});
 
-# List sessions
-sessions = client.list_sessions(page_size=10)
+// List sessions
+const sessions = await client.listSessions(10);
 
-# Send a message
-client.send_message(session_id="1234567", message="Add authentication")
+// Send a message
+await client.sendMessage('1234567', 'Add authentication');
 
-# Approve plan
-client.approve_plan(session_id="1234567")
+// Approve plan
+await client.approvePlan('1234567');
 ```
