@@ -28,49 +28,6 @@
   {
     "type": "function",
     "function": {
-      "name": "jules",
-      "description": "Interact with the Jules AI agent for complex coding tasks, PR reviews, or repository-wide changes.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "create",
-              "list-sessions",
-              "get-session",
-              "send-message",
-              "approve-plan",
-              "list-sources"
-            ],
-            "description": "The action to perform with Jules."
-          },
-          "prompt": {
-            "type": "string",
-            "description": "The instruction or message for Jules (used with create, send-message)."
-          },
-          "repo": {
-            "type": "string",
-            "description": "The GitHub repository name (owner/repo) for the session."
-          },
-          "sessionId": {
-            "type": "string",
-            "description": "The ID of an existing Jules session."
-          },
-          "extraArgs": {
-            "type": "string",
-            "description": "Any additional flags or arguments for the jules client."
-          }
-        },
-        "required": [
-          "action"
-        ]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
       "name": "write_note",
       "description": "Save a new note to the memory directory as a Markdown file.",
       "parameters": {

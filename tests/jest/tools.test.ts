@@ -14,30 +14,17 @@ describe('ToolRegistry', () => {
     (tools as any).make.run = jest.fn(() => Promise.resolve({ stdout: 'success', stderr: '', exitCode: 0 }));
   });
 
-  test('jules tool uses nomenclature to resolve repo', async () => {
-    await tools.execute('jules', { action: 'create', repo: 'my-fuzzy-repo', prompt: 'test' });
-
-    expect(nomenclatureMock.resolveRepoName).toHaveBeenCalledWith('my-fuzzy-repo');
-    expect((tools as any).make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
-      A: expect.stringContaining('--repo owner/repo')
-    }));
+  test('run_make tool executes successfully', async () => {
+    const result = await tools.execute('run_make', { target: 'status', args: {} });
+    expect((tools as any).make.run).toHaveBeenCalledWith('status', {});
+    expect(result).toContain('STDOUT: success');
   });
 
-  test('jules tool constructs correct command arguments', async () => {
-    await tools.execute('jules', {
-      action: 'send-message',
-      sessionId: '123',
-      prompt: 'Hello "World"'
-    });
-
-    expect((tools as any).make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
-      A: expect.stringContaining('send-message --plain')
-    }));
-    expect((tools as any).make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
-      A: expect.stringContaining('--session-id 123')
-    }));
-    expect((tools as any).make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
-      A: expect.stringContaining('--message "Hello \\"World\\""')
-    }));
+  test('write_note tool executes successfully', async () => {
+    // Mock fs.writeNote
+    (tools as any).fs.writeNote = jest.fn(() => Promise.resolve('Note saved'));
+    const result = await tools.execute('write_note', { filename: 'test.md', content: 'test' });
+    expect((tools as any).fs.writeNote).toHaveBeenCalledWith('test.md', 'test');
+    expect(result).toBe('Note saved');
   });
 });
