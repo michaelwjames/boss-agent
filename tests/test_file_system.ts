@@ -1,6 +1,5 @@
 import { FileSystem } from '../lib/file_system.js';
 import fs from 'fs-extra';
-import path from 'path';
 import assert from 'assert';
 
 async function testFileSystem() {

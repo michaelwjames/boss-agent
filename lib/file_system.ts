@@ -1,7 +1,26 @@
 import fs from 'fs-extra';
 import path from 'path';
 
+export interface FileContent {
+  file: string;
+  content: string;
+}
+
+export interface FileChunk extends FileContent {
+  chunkId: number | null;
+}
+
+export interface ScoredFile extends FileContent {
+  score: number;
+  chunkId?: number | null;
+}
+
 export class FileSystem {
+  private vaultPath: string;
+  private memoryPath: string;
+  private skillsPath: string;
+  private soulPath: string;
+
   constructor(vaultPath = './vault', memoryPath = './memory', skillsPath = './skills') {
     this.vaultPath = vaultPath;
     this.memoryPath = memoryPath;
@@ -9,7 +28,7 @@ export class FileSystem {
     this.soulPath = './soul.md';
   }
 
-  async loadSoulPrompt() {
+  async loadSoulPrompt(): Promise<string> {
     try {
       if (await fs.pathExists(this.soulPath)) {
         return await fs.readFile(this.soulPath, 'utf-8');
@@ -20,7 +39,7 @@ export class FileSystem {
     return '';
   }
 
-  async readAllNotes(query = '') {
+  async readAllNotes(query = ''): Promise<string> {
     const vaultFiles = await this._readDir(this.vaultPath);
     const memoryFiles = await this._readDir(this.memoryPath);
     const skillsFiles = await this._readDir(this.skillsPath);
@@ -70,15 +89,15 @@ export class FileSystem {
   /**
    * Split a Markdown file into chunks based on headers
    */
-  _chunkFile({ file, content }) {
+  private _chunkFile({ file, content }: FileContent): FileChunk[] {
     // If file is small, return as single chunk
     if (content.length < 2000) {
       return [{ file, content, chunkId: null }];
     }
 
-    const chunks = [];
+    const chunks: FileChunk[] = [];
     const lines = content.split('\n');
-    let currentChunk = [];
+    let currentChunk: string[] = [];
     let currentSize = 0;
     let chunkCount = 0;
 
@@ -119,12 +138,12 @@ export class FileSystem {
     return chunks;
   }
 
-  async _readDir(dirPath) {
+  private async _readDir(dirPath: string): Promise<FileContent[]> {
     if (!await fs.pathExists(dirPath)) return [];
     const files = await fs.readdir(dirPath);
     const mdFiles = files.filter(f => f.endsWith('.md'));
 
-    const contents = [];
+    const contents: FileContent[] = [];
     for (const file of mdFiles) {
       const filePath = path.join(dirPath, file);
       const content = await fs.readFile(filePath, 'utf-8');
@@ -135,13 +154,13 @@ export class FileSystem {
 
   /**
    * Score files based on keyword matching with query
-   * @param {Array} files - Array of {file, content} objects
-   * @param {string} query - Search query
-   * @returns {Array} - Sorted files with scores
+   * @param files - Array of {file, content} objects
+   * @param query - Search query
+   * @returns - Sorted files with scores
    */
-  _keywordMatch(files, query) {
+  private _keywordMatch(files: FileChunk[], query: string): ScoredFile[] {
     const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-    const scoredFiles = files.map(({ file, content }) => {
+    const scoredFiles: (ScoredFile)[] = files.map(({ file, content, chunkId }) => {
       const contentLower = content.toLowerCase();
       let score = 0;
 
@@ -159,7 +178,7 @@ export class FileSystem {
         }
       }
 
-      return { file, content, score };
+      return { file, content, score, chunkId };
     });
 
     return scoredFiles.filter(f => f.score > 0).sort((a, b) => b.score - a.score);
@@ -167,40 +186,41 @@ export class FileSystem {
 
   /**
    * Simple TF-IDF based semantic search using cosine similarity
-   * @param {Array} files - Array of {file, content} objects
-   * @param {string} query - Search query
-   * @returns {Array} - Sorted files with similarity scores
+   * @param files - Array of {file, content} objects
+   * @param query - Search query
+   * @returns - Sorted files with similarity scores
    */
-  _semanticSearch(files, query) {
+  private _semanticSearch(files: FileChunk[], query: string): ScoredFile[] {
     // Tokenize and count term frequencies
-    const tokenize = (text) => {
+    const tokenize = (text: string): Record<string, number> => {
       return text.toLowerCase()
         .split(/\s+/)
         .filter(w => w.length > 2)
         .reduce((acc, word) => {
           acc[word] = (acc[word] || 0) + 1;
           return acc;
-        }, {});
+        }, {} as Record<string, number>);
     };
 
     const queryTerms = tokenize(query);
-    const docs = files.map(({ file, content }) => ({
+    const docs = files.map(({ file, content, chunkId }) => ({
       file,
       content,
+      chunkId,
       terms: tokenize(content)
     }));
 
     // Calculate IDF for all terms
     const allTerms = new Set([...Object.keys(queryTerms), ...docs.flatMap(d => Object.keys(d.terms))]);
-    const idf = {};
+    const idf: Record<string, number> = {};
     for (const term of allTerms) {
       const docCount = docs.filter(d => d.terms[term]).length;
       idf[term] = Math.log((docs.length + 1) / (docCount + 1)) + 1;
     }
 
     // Calculate TF-IDF vectors
-    const toVector = (terms) => {
-      const vector = [];
+    const toVector = (terms: Record<string, number>): number[] => {
+      const vector: number[] = [];
       for (const term of allTerms) {
         const tf = terms[term] || 0;
         vector.push(tf * idf[term]);
@@ -212,23 +232,24 @@ export class FileSystem {
     const docVectors = docs.map(d => ({ ...d, vector: toVector(d.terms) }));
 
     // Calculate cosine similarity
-    const cosineSimilarity = (v1, v2) => {
+    const cosineSimilarity = (v1: number[], v2: number[]): number => {
       const dotProduct = v1.reduce((sum, val, i) => sum + val * v2[i], 0);
       const mag1 = Math.sqrt(v1.reduce((sum, val) => sum + val * val, 0));
       const mag2 = Math.sqrt(v2.reduce((sum, val) => sum + val * val, 0));
       return mag1 && mag2 ? dotProduct / (mag1 * mag2) : 0;
     };
 
-    const scoredDocs = docVectors.map(({ file, content, vector }) => ({
+    const scoredDocs: ScoredFile[] = docVectors.map(({ file, content, chunkId, vector }) => ({
       file,
       content,
+      chunkId,
       score: cosineSimilarity(queryVector, vector)
     }));
 
     return scoredDocs.filter(d => d.score > 0.1).sort((a, b) => b.score - a.score);
   }
 
-  async writeNote(filename, content) {
+  async writeNote(filename: string, content: string): Promise<string> {
     if (!filename.endsWith('.md')) filename += '.md';
     const filePath = path.join(this.memoryPath, filename);
     await fs.ensureDir(this.memoryPath);
@@ -236,14 +257,14 @@ export class FileSystem {
     return `Note saved to ${filename}`;
   }
 
-  async saveSession(sessionId, messages) {
+  async saveSession(sessionId: string, messages: any[]): Promise<void> {
     const sessionDir = './session_history';
     if (!await fs.pathExists(sessionDir)) await fs.mkdirp(sessionDir);
     const filePath = path.join(sessionDir, `${sessionId}.json`);
     await fs.writeJson(filePath, messages, { spaces: 2 });
   }
 
-  async loadSession(sessionId) {
+  async loadSession(sessionId: string): Promise<any[]> {
     const filePath = path.join('./session_history', `${sessionId}.json`);
     if (await fs.pathExists(filePath)) {
       return await fs.readJson(filePath);

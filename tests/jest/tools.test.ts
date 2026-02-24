@@ -2,8 +2,8 @@ import { jest } from '@jest/globals';
 import { ToolRegistry } from '../../lib/tools.js';
 
 describe('ToolRegistry', () => {
-  let nomenclatureMock;
-  let tools;
+  let nomenclatureMock: any;
+  let tools: ToolRegistry;
 
   beforeEach(() => {
     nomenclatureMock = {
@@ -11,14 +11,14 @@ describe('ToolRegistry', () => {
     };
     tools = new ToolRegistry(nomenclatureMock);
     // Mock make.run to avoid actual execution
-    tools.make.run = jest.fn().mockResolvedValue({ stdout: 'success', stderr: '', exitCode: 0 });
+    (tools as any).make.run = jest.fn(() => Promise.resolve({ stdout: 'success', stderr: '', exitCode: 0 }));
   });
 
   test('jules tool uses nomenclature to resolve repo', async () => {
     await tools.execute('jules', { action: 'create', repo: 'my-fuzzy-repo', prompt: 'test' });
 
     expect(nomenclatureMock.resolveRepoName).toHaveBeenCalledWith('my-fuzzy-repo');
-    expect(tools.make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
+    expect((tools as any).make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
       A: expect.stringContaining('--repo owner/repo')
     }));
   });
@@ -30,13 +30,13 @@ describe('ToolRegistry', () => {
       prompt: 'Hello "World"'
     });
 
-    expect(tools.make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
+    expect((tools as any).make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
       A: expect.stringContaining('send-message --plain')
     }));
-    expect(tools.make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
+    expect((tools as any).make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
       A: expect.stringContaining('--session-id 123')
     }));
-    expect(tools.make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
+    expect((tools as any).make.run).toHaveBeenCalledWith('jules', expect.objectContaining({
       A: expect.stringContaining('--message "Hello \\"World\\""')
     }));
   });

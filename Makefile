@@ -86,7 +86,7 @@ pr-close:
 
 # --- Reminders ---
 remind:
-	node skills/remind.js "$(DELAY)" "$(DISCORD_WEBHOOK_URL)" "$(MESSAGE)" &
+	npx tsx skills/remind.ts "$(DELAY)" "$(DISCORD_WEBHOOK_URL)" "$(MESSAGE)" &
 	@echo "Reminder scheduled: '$(MESSAGE)' in $(DELAY)"
 
 # --- Integrations ---
