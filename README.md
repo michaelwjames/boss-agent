@@ -1,154 +1,86 @@
-# Boss Agent
+# Boss Agent: The Digital Butler
 
-A Discord-based AI agent powered by Groq's LLM and Whisper models, featuring voice support, session persistence, and a safety-first architecture that restricts execution to predefined Makefile targets.
+Boss Agent is a sophisticated, safety-first AI assistant integrated with Discord. It leverages Groq's high-speed inference for LLM and Whisper (voice transcription) capabilities, featuring a local Retrieval-Augmented Generation (RAG) system and a strict execution model controlled by a central Makefile.
 
-## Overview
-
-Boss Agent is a dual-modal Discord bot that handles both text and audio inputs. It uses Groq's fast inference for chat completions and Whisper for voice transcription. The agent maintains conversation history per Discord channel, loads context from local markdown files, and can only execute commands defined in a root-level Makefile for security.
+The agent adopts an ironic "Boss Operator" persona—constantly joking about its name while being a strictly obedient and highly efficient servant.
 
 ## Architecture
 
-### Core Components
+### Construction and Rationale
+The Boss Agent is built on a modular, decoupled architecture designed for speed, security, and extensibility.
 
+1.  **Discord as the Unified Interface**: Discord serves as the primary gateway, supporting both text and audio inputs. This allows for a rich, multi-modal interaction loop within a familiar communication platform.
+2.  **Groq-Powered Dual-Modality**:
+    -   **Text**: Uses Groq's fast inference for chat completions (e.g., Llama-3 based models).
+    -   **Voice**: Uses `whisper-large-v3` via Groq for near-instant transcription of audio notes.
+    -   **Rationale**: Conversational agents require ultra-low latency. Groq's LPU™ technology provides the speed necessary for a responsive experience, especially when processing voice commands.
+3.  **The Makefile Gatekeeper**:
+    -   All external tool executions are routed through a root-level `Makefile`.
+    -   **Rationale**: This is the cornerstone of the agent's **Safety Architecture**. The agent never has direct shell access. It can only call predefined targets, which are audited, sanitized, and restricted by the `MakeExecutor`. This prevents arbitrary code execution vulnerabilities.
+4.  **Local Filesystem RAG (Vault/Memory/Skills)**:
+    -   The agent uses a TF-IDF based search over local Markdown files organized into `vault/` (static), `memory/` (dynamic), and `skills/` (scripts).
+    -   **Rationale**: Local files are easy to version, audit, and modify without the overhead of a vector database. The `FileSystem` implements header-based chunking to ensure only the most relevant sections are injected into the context.
+5.  **Token-Aware Context Management**:
+    -   Uses `js-tiktoken` to implement a sliding window for session history and context retrieval.
+    -   **Rationale**: By accurately counting tokens and prioritizing recent history and relevant RAG chunks, the agent avoids context window overflow and maintains instruction-following quality.
+6.  **Nomenclature Middleware**:
+    -   A dedicated service for resolving fuzzy or voice-transcribed identifiers (like repository names) against actual system records.
+    -   **Rationale**: Bridges the gap between imprecise human input and the exact strings required by system tools (e.g., GitHub API).
+
+### Component Overview
 ```
 boss-agent/
-├── index.js              # Main Discord bot entry point
-├── lib/
-│   ├── groq_provider.js  # Groq SDK wrapper (LLM + Whisper)
-│   ├── file_system.js    # File operations (vault, memory, sessions)
-│   ├── tools.js          # Tool registry and executor
-│   ├── make_executor.js  # Make target execution
-│   ├── provider.js       # Base LLM provider interface
-│   ├── shell_executor.js # Shell command execution
-│   └── nomenclature.js   # Repository cataloging middleware
-├── vault/                # Persistent knowledge base
-├── memory/               # Agent-written notes
-├── skills/               # Reusable skill scripts
-├── session_history/      # Per-channel conversation history
-└── soul.md               # Personality definition
+├── index.ts              # Discord bot entry point & message loop
+├── lib/                  # Core logic
+│   ├── file_system.ts    # RAG, session management, and note-taking
+│   ├── groq_provider.ts  # Groq LLM & Whisper integration
+│   ├── make_executor.ts  # Secure Makefile target execution
+│   ├── nomenclature.ts   # Fuzzy name resolution middleware
+│   ├── provider.ts       # LLM provider interface
+│   ├── shell_executor.ts # Low-level shell command handling
+│   ├── tools.ts          # Tool registry and execution dispatcher
+│   └── tools.json        # Tool definitions for the LLM
+├── skills/               # External scripts and integrations (Gemini, Reminders, etc.)
+├── vault/                # Read-only knowledge base (Markdown)
+├── memory/               # Persistent agent-writable notes (Markdown)
+├── tests/                # Jest and manual tests
+├── docs/                 # Architectural and feature documentation
+├── session_history/      # Per-channel JSON session logs
+├── soul.md               # Agent personality definition
+└── Makefile              # The central gatekeeper for all external actions
 ```
 
-### Message Flow
+## Features
 
-1. **Input Processing** (`index.js:42-77`)
-   - Discord message received
-   - Check for audio attachments → transcribe via Groq Whisper
-   - Extract text content
-   - Skip if no processable content
+### Core Features
+-   **Multi-Modal Interaction**: Seamlessly handles text and audio (voice note) inputs.
+-   **Session Persistence**: Maintains conversation continuity per Discord channel, stored as JSON in `session_history/`.
+-   **Semantic Context Retrieval**: Automatically retrieves relevant notes and skill documentation based on the user's query using TF-IDF and Markdown header-based chunking.
+-   **Safety-First Tool Execution**: Restricts all actions to predefined, sanitized Makefile targets.
 
-2. **Context Loading** (`index.js:83-86`)
-   - Load personality from `soul.md`
-   - Read all notes from `vault/`, `memory/`, `skills/`
-   - Load session history for this Discord channel
+### Peripheral Features
+-   **Git & GitHub Management**: Summarize commits, view PR diffs, and manage PRs (list, merge, close) via `gh` CLI.
+-   **Task Integration**: Create and track issues in **Linear**.
+-   **Web Intelligence**: Web search, deep research, and image generation via **Gemini** wrappers.
+-   **Cloud Ops**: Fetch build and deployment logs from **Vercel**.
+-   **Delayed Reminders**: Schedule notifications via Discord webhooks.
+-   **Jules API Integration**: Direct interaction with Jules for complex engineering tasks and session management.
 
-3. **LLM Interaction** (`index.js:87-133`)
-   - Build system prompt with personality + context
-   - Send to Groq with tool definitions
-   - Execute tool calls in a loop until complete
-   - Return final response
+## Guidelines for Agents
 
-4. **Response Delivery** (`index.js:135-149`)
-   - Split messages >2000 chars (Discord limit)
-   - Send reply to channel
-   - Save updated session history
+To maintain the stability and security of the Boss Agent, all contributing agents must adhere to these specific guidelines:
 
-## Key Features
-
-### Voice Support
-- Audio attachments are downloaded to temp directory
-- Transcribed using Groq's Whisper model (`whisper-large-v3`)
-- Transcription is confirmed to user before processing
-- Temp files are cleaned up after use
-
-### Session Persistence
-- Each Discord channel has a unique session ID
-- Last 20 messages saved per session in `session_history/`
-- History loaded on each message for context continuity
-- System prompts excluded from saved history
-
-### Context Management
-- **vault/**: User-provided knowledge base (read-only)
-- **memory/**: Agent-written notes (write-only via `write_note`)
-- **skills/**: Reusable scripts and integrations
-- **soul.md**: Personality and behavioral rules
-
-### Safety Architecture
-The agent **cannot** execute arbitrary shell commands. All execution must go through predefined Makefile targets:
-- System commands: `status`, `test`
-- File operations: `list-files`, `read-file`
-- Git operations: `git-status`, `git-diff`, `git-log`, `git-summary`
-- PR management: `pr-list`, `pr-diff`, `pr-view`, `pr-merge`, `pr-close`
-- Integrations: `safe-gemini`, `linear-task`, `vercel-logs`, `remind`
-
-## Available Tools
-
-### `run_make`
-Execute a predefined make target with optional arguments.
-
-```javascript
-{
-  "target": "git-status",
-  "args": {}
-}
-```
-
-### `write_note`
-Save a new note to the memory directory as Markdown.
-
-```javascript
-{
-  "filename": "report.md",
-  "content": "# Report\n\nContent here..."
-}
-```
-
-## Configuration
-
-### Environment Variables
-Create a `.env` file:
-
-```bash
-DISCORD_BOT_TOKEN=your_discord_bot_token
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct  # optional
-GROQ_WHISPER_MODEL=whisper-large-v3  # optional
-```
-
-### Personality Customization
-Edit `soul.md` to change the agent's personality. The default is an ironic, self-deprecating "digital butler" persona that jokes about being called "The Boss" while strictly obeying commands.
-
-## Make Targets Reference
-
-### System
-- `make status` - Check agent status
-- `make test` - Run tests
-
-### Files
-- `make list-files DIR=.` - List files in directory
-- `make read-file FILE=x` - Read a file
-
-### Git
-- `make git-status` - Show working tree status
-- `make git-diff` - Show unstaged changes
-- `make git-log` - Show last 20 commits
-- `make git-summary` - Summarized git report
-
-### Pull Requests (requires `gh` CLI)
-- `make pr-list` - List open PRs
-- `make pr-diff PR_NUMBER=N` - Show PR diff
-- `make pr-view PR_NUMBER=N` - Show PR details
-- `make pr-merge PR_NUMBER=N` - Merge a PR
-- `make pr-close PR_NUMBER=N` - Close a PR
-
-### Integrations
-- `make safe-gemini QUERY=x` - Run safe Gemini query
-- `make linear-task TITLE=x DESCRIPTION=x` - Create Linear task
-- `make vercel-logs` - Fetch Vercel deployment logs
-- `make remind DELAY=5m MESSAGE=x DISCORD_WEBHOOK_URL=x` - Set delayed reminder
+1.  **Strict Makefile Interfacing**: **Never** use `exec` or `spawn` directly in new core code. Every external action must be added as a target in the `Makefile` and invoked via the `run_make` tool.
+2.  **Argument Sanitization**: While `MakeExecutor` filters dangerous characters, new Makefile targets should perform their own validation to ensure robust execution.
+3.  **ESM & TypeScript Compliance**: The project is a strict ES Module TypeScript project. Use `import` instead of `require` and maintain full type coverage.
+4.  **Tool Registry Sync**: Any change to tool capabilities must be reflected in `lib/tools.json`. This file is the source of truth for the LLM's function call signatures.
+5.  **Output Truncation Awareness**: The `MakeExecutor` truncates outputs at 5000 characters. Design tools to be concise or provide summarization if they are expected to produce large amounts of data.
+6.  **Context Hygiene**: Do not flood the session history with large tool outputs. Use `write_note` to save detailed reports to `memory/` and refer the "Boss" to those files.
+7.  **Test Before Submit**: Core logic in `lib/` must be verified using the Jest suite in `tests/jest/`. Run `pnpm test` before finalizing any changes.
 
 ## Development
 
-### Installation
+### Setup
 ```bash
 pnpm install
 ```
@@ -156,32 +88,22 @@ pnpm install
 ### Running
 ```bash
 pnpm start
-# or
-node index.js
 ```
 
-### Adding New Tools
-1. Define tool in `lib/tools.js` → `getDefinitions()`
-2. Implement execution in `execute()` method
-3. Add corresponding make target to `Makefile` if needed
-
-### Adding New Skills
-Create scripts in `skills/` directory. These will be automatically loaded as context and can be invoked via make targets.
+### Configuration
+Create a `.env` file in the root:
+```bash
+DISCORD_BOT_TOKEN=...
+GROQ_API_KEY=...
+JULES_API_KEY=...
+GEMINI_API_KEY=...
+# Optional
+GROQ_MODEL=...
+GROQ_WHISPER_MODEL=...
+```
 
 ## Security Model
-
-1. **No Arbitrary Execution**: Agent can only run predefined make targets
-2. **Tool Choice**: LLM must select from registered tools only
-3. **Argument Validation**: Make targets validate their own arguments
-4. **Session Isolation**: Each Discord channel has separate history
-5. **Read-Only Vault**: Agent cannot modify vault/ contents
-6. **Write-Only Memory**: Agent can only write to memory/, not read from it
-
-## Future Roadmap
-
-See `docs/new-features.md` for planned features including:
-- Audio output mode (text-to-speech)
-- Email wrapper
-- Dynamic skill creation via Jules delegation
-- Proactive task enforcement with priority weighting
-- Heartbeat system for scheduled checks
+1.  **No Arbitrary Execution**: The agent is restricted to `Makefile` targets.
+2.  **Read-Only Vault**: The `vault/` directory is immutable for the agent.
+3.  **Write-Only Memory**: The agent can create new notes in `memory/` but cannot modify existing ones after a short grace period (conceptual rule from `docs/architecture-planning.md`).
+4.  **Session Isolation**: Histories are strictly separated by Discord channel IDs.
