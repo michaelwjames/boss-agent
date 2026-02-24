@@ -1,7 +1,7 @@
 import { exec, execSync } from 'child_process';
 import { promisify } from 'util';
 import { readFileSync } from 'fs';
-import path from 'path';
+import { CommandResult } from './shell_executor.js';
 
 const execAsync = promisify(exec);
 
@@ -11,6 +11,9 @@ const DANGEROUS_CHARS = /[;|&`$(){}[\]<>!\n\r\\]/;
 const MAX_OUTPUT_LENGTH = 5000; // Characters per stream
 
 export class MakeExecutor {
+  private makefilePath: string;
+  private allowedTargets: Set<string>;
+
   constructor(makefilePath = './Makefile') {
     this.makefilePath = makefilePath;
     this.allowedTargets = this._parseTargets();
@@ -19,10 +22,10 @@ export class MakeExecutor {
   /**
    * Parse the Makefile to extract allowed target names.
    */
-  _parseTargets() {
+  private _parseTargets(): Set<string> {
     try {
       const content = readFileSync(this.makefilePath, 'utf-8');
-      const targets = new Set();
+      const targets = new Set<string>();
       for (const line of content.split('\n')) {
         // Match lines like "target-name:" (with optional dependencies)
         const match = line.match(/^([a-zA-Z0-9_-]+)\s*:/);
@@ -40,7 +43,7 @@ export class MakeExecutor {
   /**
    * Reload allowed targets from the Makefile.
    */
-  reload() {
+  reload(): void {
     this.allowedTargets = this._parseTargets();
   }
 
@@ -48,7 +51,7 @@ export class MakeExecutor {
    * Returns a formatted string of available targets and their usage.
    * Derived from running 'make help'.
    */
-  getHelp() {
+  getHelp(): string {
     try {
       const helpOutput = execSync(`make -f ${this.makefilePath} help`, { encoding: 'utf8', timeout: 2000 });
       const lines = helpOutput.split('\n');
@@ -65,11 +68,11 @@ export class MakeExecutor {
 
   /**
    * Execute a make target with optional arguments.
-   * @param {string} target - The make target to run
-   * @param {Object} args - Key-value arguments (e.g., { PR_NUMBER: "42" })
-   * @returns {{ stdout: string, stderr: string, exitCode: number }}
+   * @param target - The make target to run
+   * @param args - Key-value arguments (e.g., { PR_NUMBER: "42" })
+   * @returns {CommandResult}
    */
-  async run(target, args = {}) {
+  async run(target: string, args: Record<string, string | number> = {}): Promise<CommandResult> {
     // Validate target name
     if (!target || typeof target !== 'string') {
       return { stdout: '', stderr: 'Error: Target name is required.', exitCode: 1 };
@@ -109,7 +112,7 @@ export class MakeExecutor {
         stderr: this._truncate(stderr),
         exitCode: 0,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         stdout: error.stdout ? this._truncate(error.stdout) : '',
         stderr: error.stderr ? this._truncate(error.stderr) : this._truncate(error.message),
@@ -121,7 +124,7 @@ export class MakeExecutor {
   /**
    * Truncate string if it exceeds MAX_OUTPUT_LENGTH
    */
-  _truncate(str) {
+  private _truncate(str: string): string {
     if (!str) return '';
     const trimmed = str.trim();
     if (trimmed.length <= MAX_OUTPUT_LENGTH) return trimmed;

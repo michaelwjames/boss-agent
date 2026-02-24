@@ -2,11 +2,13 @@
   "name": "boss-operator",
   "version": "1.0.0",
   "description": "Discord LLM Agent with Groq and local memory",
-  "main": "index.js",
+  "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "test": "NODE_OPTIONS='--experimental-vm-modules' jest"
+    "start": "tsx index.ts",
+    "build": "tsc",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "discord.js": "^14.25.1",
@@ -15,5 +17,14 @@
     "groq-sdk": "^0.10.0",
     "jest": "^30.2.0",
     "js-tiktoken": "^1.0.21"
+  },
+  "devDependencies": {
+    "@jest/globals": "^30.2.0",
+    "@types/fs-extra": "^11.0.4",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.3.0",
+    "ts-jest": "^29.4.6",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

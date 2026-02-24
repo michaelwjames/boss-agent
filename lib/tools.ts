@@ -1,23 +1,29 @@
 import { MakeExecutor } from './make_executor.js';
 import { FileSystem } from './file_system.js';
+import { Nomenclature } from './nomenclature.js';
 import toolsDefinitions from './tools.json' with { type: 'json' };
 
 /**
  * Tool registry — single source of truth for all tool definitions and executors.
  */
 export class ToolRegistry {
-  constructor(nomenclature) {
+  private make: MakeExecutor;
+  private fs: FileSystem;
+  private nomenclature?: Nomenclature;
+  private definitions: any[];
+
+  constructor(nomenclature?: Nomenclature) {
     this.make = new MakeExecutor();
     this.fs = new FileSystem();
     this.nomenclature = nomenclature;
-    this.definitions = structuredClone(toolsDefinitions);
+    this.definitions = structuredClone(toolsDefinitions as any[]);
     this._refreshMakeDescription();
   }
 
   /**
    * Refresh the run_make tool description with the latest targets from the Makefile.
    */
-  _refreshMakeDescription() {
+  private _refreshMakeDescription(): void {
     const runMakeTool = this.definitions.find(d => d.function.name === 'run_make');
     if (runMakeTool) {
       const makeHelp = this.make.getHelp();
@@ -30,17 +36,17 @@ export class ToolRegistry {
   /**
    * Returns OpenAI-compatible tool definitions for the LLM.
    */
-  getDefinitions() {
+  getDefinitions(): any[] {
     return this.definitions;
   }
 
   /**
    * Execute a tool call by name.
-   * @param {string} name - Tool name
-   * @param {Object} args - Tool arguments
-   * @returns {string} - Tool execution result
+   * @param name - Tool name
+   * @param args - Tool arguments
+   * @returns - Tool execution result
    */
-  async execute(name, args) {
+  async execute(name: string, args: any): Promise<string> {
     switch (name) {
       case 'run_make': {
         const result = await this.make.run(args.target, args.args);

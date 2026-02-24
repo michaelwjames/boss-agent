@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, Message } from 'discord.js';
 import { writeFile, unlink } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
@@ -42,18 +42,20 @@ const client = new Client({
 });
 
 client.once('ready', () => {
-  console.log(`Boss Agent is online as ${client.user.tag}`);
+  if (client.user) {
+    console.log(`Boss Agent is online as ${client.user.tag}`);
+  }
 });
 
 // --- Message Handler ---
-client.on('messageCreate', async (message) => {
+client.on('messageCreate', async (message: Message) => {
   // Ignore messages from bots (including self)
   if (message.author.bot) return;
 
   const sessionId = String(message.channel.id);
 
   try {
-    let userText = null;
+    let userText: string | null = null;
 
     // Handle voice/audio attachments — transcribe via Groq Whisper
     const audioAttachment = message.attachments.find(a => {
@@ -84,7 +86,9 @@ client.on('messageCreate', async (message) => {
     if (!userText) return;
 
     // Send typing indicator
-    await message.channel.sendTyping();
+    if ('sendTyping' in message.channel) {
+      await (message.channel as any).sendTyping();
+    }
 
     // Load context
     const soulPrompt = await fileSystem.loadSoulPrompt();
@@ -108,11 +112,11 @@ ${vaultContext}
 
     // Token-aware sliding window
     const MAX_CONTEXT_TOKENS = 6000;
-    let messages = [{ role: 'system', content: systemPrompt }];
+    let messages: any[] = [{ role: 'system', content: systemPrompt }];
     let currentTokens = enc.encode(systemPrompt).length + enc.encode(userText).length + 500; // 500 safety margin for tool defs
 
     // Add history from newest to oldest until limit reached
-    const historyToInclude = [];
+    const historyToInclude: any[] = [];
     for (let i = history.length - 1; i >= 0; i--) {
       const msg = history[i];
       const msgTokens = enc.encode(msg.content || JSON.stringify(msg.tool_calls || '')).length;
@@ -146,7 +150,9 @@ ${vaultContext}
       }
 
       // Refresh typing indicator between tool calls
-      await message.channel.sendTyping();
+      if ('sendTyping' in message.channel) {
+        await (message.channel as any).sendTyping();
+      }
       responseMessage = await groq.chat(messages, toolDefs);
     }
 
@@ -158,15 +164,17 @@ ${vaultContext}
       // Split long responses into chunks
       const chunks = splitMessage(replyText, 2000);
       for (const chunk of chunks) {
-        await message.channel.send(chunk);
+        if ('send' in message.channel) {
+          await (message.channel as any).send(chunk);
+        }
       }
     }
 
     // Save history (up to last 50 messages, sliding window will handle context on load)
     messages.push(responseMessage);
-    await fileSystem.saveSession(sessionId, messages.filter(m => m.role !== 'system').slice(-50));
+    await fileSystem.saveSession(sessionId, messages.filter((m: any) => m.role !== 'system').slice(-50));
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error handling message:', error);
     try {
       await message.reply(`Sorry Boss, I hit a snag: ${error.message}`);
@@ -180,8 +188,8 @@ ${vaultContext}
  * Split a long message into chunks that respect Discord's 2000 char limit.
  * Tries to split on newlines to avoid breaking mid-sentence.
  */
-function splitMessage(text, maxLength) {
-  const chunks = [];
+function splitMessage(text: string, maxLength: number): string[] {
+  const chunks: string[] = [];
   let remaining = text;
 
   while (remaining.length > maxLength) {

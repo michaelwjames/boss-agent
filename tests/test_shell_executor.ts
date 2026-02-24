@@ -17,12 +17,12 @@ async function testMakeExecutor() {
   // Test: shell metacharacters in target name are rejected
   const res3 = await make.run('status; rm -rf /');
   assert.strictEqual(res3.exitCode, 1, 'injection attempt should fail');
-  assert(res3.stderr.includes('forbidden characters'), 'should report forbidden chars');
+  assert(res3.stderr.includes('forbidden characters'), 'should report forbidden characters');
 
   // Test: shell metacharacters in args are rejected
   const res4 = await make.run('pr-diff', { PR_NUMBER: '42; echo pwned' });
   assert.strictEqual(res4.exitCode, 1, 'injection in args should fail');
-  assert(res4.stderr.includes('forbidden characters'), 'should report forbidden chars in args');
+  assert(res4.stderr.includes('forbidden characters'), 'should report forbidden characters in args');
 
   // Test: pipe injection in target name
   const res5 = await make.run('status | cat /etc/passwd');
@@ -34,7 +34,7 @@ async function testMakeExecutor() {
 
   // Test: reload targets
   make.reload();
-  assert(make.allowedTargets.size > 0, 'should have targets after reload');
+  assert((make as any).allowedTargets.size > 0, 'should have targets after reload');
 
   console.log('MakeExecutor tests passed!');
 }

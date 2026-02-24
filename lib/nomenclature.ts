@@ -3,11 +3,23 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+export interface Repo {
+  name: string;
+  url: string;
+}
+
+export interface ResolutionResult {
+  exact: Repo | null;
+  candidates: Repo[];
+}
+
 /**
  * Nomenclature middleware — resolves fuzzy/voice-transcribed repo and file names
  * against a catalog of actual names from GitHub.
  */
 export class Nomenclature {
+  private repos: Repo[];
+
   constructor() {
     this.repos = [];
   }
@@ -16,12 +28,12 @@ export class Nomenclature {
    * Load the repo catalog from GitHub via `gh` CLI.
    * Call this on startup or periodically to refresh.
    */
-  async loadCatalog() {
+  async loadCatalog(): Promise<void> {
     try {
       const { stdout } = await execAsync('gh repo list --json name,url --limit 100');
       this.repos = JSON.parse(stdout);
       console.log(`[NOMENCLATURE] Loaded ${this.repos.length} repos.`);
-    } catch (error) {
+    } catch (error: any) {
       console.warn('[NOMENCLATURE] Could not load repo catalog:', error.message);
       this.repos = [];
     }
@@ -29,10 +41,10 @@ export class Nomenclature {
 
   /**
    * Resolve a fuzzy repo name to exact matches.
-   * @param {string} input - The user's input (possibly from voice transcription)
-   * @returns {{ exact: Object|null, candidates: Object[] }}
+   * @param input - The user's input (possibly from voice transcription)
+   * @returns {ResolutionResult}
    */
-  resolveRepoName(input) {
+  resolveRepoName(input: string): ResolutionResult {
     if (!input || this.repos.length === 0) {
       return { exact: null, candidates: [] };
     }
@@ -71,7 +83,7 @@ export class Nomenclature {
 /**
  * Levenshtein distance between two strings.
  */
-function levenshtein(a, b) {
+function levenshtein(a: string, b: string): number {
   const matrix = Array.from({ length: a.length + 1 }, (_, i) =>
     Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
   );

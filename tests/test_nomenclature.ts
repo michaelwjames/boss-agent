@@ -5,7 +5,7 @@ function testNomenclature() {
   const nom = new Nomenclature();
 
   // Manually set repos instead of calling gh
-  nom.repos = [
+  (nom as any).repos = [
     { name: 'boss-agent', url: 'https://github.com/user/boss-agent' },
     { name: 'my-website', url: 'https://github.com/user/my-website' },
     { name: 'data-pipeline', url: 'https://github.com/user/data-pipeline' },
@@ -16,12 +16,12 @@ function testNomenclature() {
   // Test: exact match
   const r1 = nom.resolveRepoName('boss-agent');
   assert(r1.exact, 'should find exact match for boss-agent');
-  assert.strictEqual(r1.exact.name, 'boss-agent');
+  assert.strictEqual(r1.exact!.name, 'boss-agent');
 
   // Test: voice transcription with spaces instead of hyphens
   const r2 = nom.resolveRepoName('boss agent');
   assert(r2.exact, 'should resolve "boss agent" to "boss-agent"');
-  assert.strictEqual(r2.exact.name, 'boss-agent');
+  assert.strictEqual(r2.exact!.name, 'boss-agent');
 
   // Test: close misspelling
   const r3 = nom.resolveRepoName('bos-agent');
