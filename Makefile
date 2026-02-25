@@ -117,6 +117,13 @@ gemini-research:
 gemini-image:
 	npx tsx skills/gemini_wrapper.ts image "$(QUERY)"
 
+# --- Create Boss Skills ---
+create-boss-skills-help:
+	@echo "Usage: make create-boss-skills NAME=name PROMPT=prompt"
+
+create-boss-skills:
+	npx tsx skills/create-boss-skills/index.ts --name="$(NAME)" --prompt="$(PROMPT)"
+
 # --- Jules Agent (Direct API) ---
 JULES_BASE_URL = https://jules.googleapis.com/v1alpha
 
