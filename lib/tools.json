@@ -48,5 +48,29 @@
         ]
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "create-boss-skills",
+      "description": "Create a new skill for the Boss Agent by generating stubs and registering it in the system.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "NAME": {
+            "type": "string",
+            "description": "The name of the new skill (e.g., 'pdf-summarizer')"
+          },
+          "PROMPT": {
+            "type": "string",
+            "description": "The requirements and description of the skill's functionality"
+          }
+        },
+        "required": [
+          "NAME",
+          "PROMPT"
+        ]
+      }
+    }
   }
 ]

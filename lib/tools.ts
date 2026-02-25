@@ -55,8 +55,16 @@ export class ToolRegistry {
       case 'write_note': {
         return await this.fs.writeNote(args.filename, args.content);
       }
-      default:
-        return `Error: Unknown tool "${name}"`;
+      default: {
+        // Try to run as a make target (for dynamically created skills)
+        // First, reload allowed targets to catch any new ones
+        this.make.reload();
+        const result = await this.make.run(name, args);
+        if (result.stderr && result.stderr.includes('is not allowed')) {
+          return `Error: Unknown tool "${name}"`;
+        }
+        return `STDOUT: ${result.stdout}\nSTDERR: ${result.stderr}\nExit Code: ${result.exitCode}`;
+      }
     }
   }
 }
