@@ -65,6 +65,19 @@ export class ToolRegistry {
         const rateLimitStats = this.tokenTracker.getRateLimitStats(args.model || 'meta-llama/llama-4-scout-17b-16e-instruct');
         return `Current rate limit stats for ${rateLimitStats.model}:\n${JSON.stringify(rateLimitStats, null, 2)}`;
       }
+      case 'jules': {
+        // Direct mapping to the new make targets based on action
+        const targetName = `jules-${args.action}`;
+        
+        // Pass relevant arguments to the make target
+        const makeArgs: Record<string, string> = {};
+        if (args.sessionId) makeArgs.ID = args.sessionId;
+        if (args.prompt) makeArgs.MESSAGE = args.prompt;
+        if (args.repo) makeArgs.REPO = args.repo;
+        
+        const result = await this.make.run(targetName, makeArgs);
+        return `STDOUT: ${result.stdout}\nSTDERR: ${result.stderr}\nExit Code: ${result.exitCode}`;
+      }
       default: {
         // Try to run as a make target (for dynamically created skills)
         // First, reload allowed targets to catch any new ones

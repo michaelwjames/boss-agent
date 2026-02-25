@@ -105,12 +105,6 @@ linear-task:
 vercel-logs:
 	node data/skills/vercel_wrapper.js logs
 
-# --- Jules Agent ---
-jules-help:
-	python3 data/skills/jules-agent/jules_client.py --help
-
-jules:
-	python3 data/skills/jules-agent/jules_client.py $(A)
 
 # --- Meta ---
 create-boss-skills-help:
