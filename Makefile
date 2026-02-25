@@ -1,16 +1,16 @@
-.PHONY: help status test list-files read-file read-skill git-status git-diff git-log pr-list pr-diff pr-view pr-merge pr-close safe-gemini git-summary linear-task vercel-logs remind jules-help jules
+.PHONY: help status test list-files read-file read-skill git-status git-diff git-log pr-list pr-diff pr-view pr-merge pr-close safe-gemini git-summary linear-task vercel-logs remind jules-help jules context-stats create-boss-skills
 
 # --- Help ---
 help:
-	@echo "Boss Agent — Allowed Make Targets:"
-	@echo ""
+	@echo "Available commands:"
 	@echo "  System:"
 	@echo "    make status              - Check agent status"
 	@echo "    make test                - Run tests"
+	@echo "    make context-stats       - Show token usage and context window stats"
 	@echo ""
 	@echo "  Files:"
 	@echo "    make list-files DIR=.    - List files in directory"
-	@echo "    make read-file FILE=x    - Read a file"
+	@echo "    make read-file FILE=x    - Read file contents"
 	@echo "    make read-skill S=x      - Read a skill's SKILL.md file"
 	@echo ""
 	@echo "  Git:"
@@ -19,7 +19,7 @@ help:
 	@echo "    make git-log             - Show last 20 commits"
 	@echo "    make git-summary         - Summarized git report"
 	@echo ""
-	@echo "  Pull Requests (gh CLI):"
+	@echo "  Pull Requests:"
 	@echo "    make pr-list             - List open PRs"
 	@echo "    make pr-diff PR_NUMBER=N - Show PR diff"
 	@echo "    make pr-view PR_NUMBER=N - Show PR details"
@@ -27,32 +27,29 @@ help:
 	@echo "    make pr-close PR_NUMBER=N- Close a PR"
 	@echo ""
 	@echo "  Reminders:"
-	@echo "    make remind DELAY=5m MESSAGE=x - Set a delayed reminder (s/m/h)"
+	@echo "    make remind DELAY=5m MESSAGE=x DISCORD_WEBHOOK_URL=x - Set a reminder"
 	@echo ""
 	@echo "  Integrations:"
-	@echo "    make safe-gemini QUERY=x - Run safe Gemini query"
-	@echo "    make linear-task TITLE=x DESCRIPTION=x - Create Linear task"
+	@echo "    make safe-gemini QUERY=x - Run a safe web search / deep research via Gemini"
+	@echo "    make linear-task TITLE=x DESCRIPTION=x - Create a Linear task"
 	@echo "    make vercel-logs         - Fetch Vercel deployment logs"
-	@echo "    make gemini-search QUERY=x - Run web search via Gemini"
-	@echo "    make gemini-research QUERY=x - Run deep research via Gemini"
-	@echo "    make gemini-image QUERY=x - Generate image via Gemini"
 	@echo ""
-	@echo "  Jules Agent (API):"
-	@echo "    make jules-list-sources  - List connected Jules sources"
-	@echo "    make jules-list-sessions - List Jules sessions"
-	@echo "    make jules-get-session ID=x - Get Jules session details"
-	@echo "    make jules-delete-session ID=x - Delete Jules session"
-	@echo "    make jules-send-message ID=x MESSAGE=y - Send message to session"
-	@echo "    make jules-approve-plan ID=x - Approve Jules plan"
-	@echo "    make jules-list-activities ID=x - List Jules activities"
-	@echo "    make jules-create-session PROMPT=x [REPO=y] [TITLE=z] [MODE=a] - Create Jules session"
+	@echo "  Jules Agent (External PR/Repo tool):"
+	@echo "    make jules-help          - Show Jules Agent help"
+	@echo "    make jules A=\"--action args\" - Run Jules Agent with custom arguments"
+	@echo ""
+	@echo "  Meta:"
+	@echo "    make create-boss-skills NAME=x PROMPT=y - Create a new skill"
 
 # --- System ---
 status:
-	@echo "Boss Agent is running."
+	@echo "Boss Agent makefile executor is operational."
 
 test:
 	npm test
+
+context-stats:
+	@npx tsx -e "import { TokenTracker } from './app/lib/token_tracker.js'; const tracker = new TokenTracker(); const stats = tracker.getRateLimitStats(process.env.GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct'); console.log(JSON.stringify(stats, null, 2));"
 
 # --- Files ---
 list-files:
@@ -62,7 +59,7 @@ read-file:
 	cat $(FILE)
 
 read-skill:
-	cat skills/$(S)/SKILL.md
+	cat data/skills/$(S)/SKILL.md
 
 # --- Git ---
 git-status:
@@ -75,7 +72,7 @@ git-log:
 	git log --oneline -20
 
 git-summary:
-	node skills/git_wrapper.js summary
+	node data/skills/git_wrapper.js summary
 
 # --- Pull Requests (via gh CLI) ---
 pr-list:
@@ -88,41 +85,42 @@ pr-view:
 	gh pr view $(PR_NUMBER)
 
 pr-merge:
-	gh pr merge $(PR_NUMBER) --merge
+	gh pr merge $(PR_NUMBER) --merge --delete-branch
 
 pr-close:
 	gh pr close $(PR_NUMBER)
 
 # --- Reminders ---
 remind:
-	npx tsx skills/remind.ts "$(DELAY)" "$(DISCORD_WEBHOOK_URL)" "$(MESSAGE)" &
+	npx tsx data/skills/remind.ts "$(DELAY)" "$(DISCORD_WEBHOOK_URL)" "$(MESSAGE)" &
 	@echo "Reminder scheduled: '$(MESSAGE)' in $(DELAY)"
 
 # --- Integrations ---
 safe-gemini:
-	node skills/safe_gemini.js "$(QUERY)"
+	node data/skills/safe_gemini.js "$(QUERY)"
 
 linear-task:
-	node skills/linear_wrapper.js create "$(TITLE)" "$(DESCRIPTION)"
+	node data/skills/linear_wrapper.js create "$(TITLE)" "$(DESCRIPTION)"
 
 vercel-logs:
-	node skills/vercel_wrapper.js logs
+	node data/skills/vercel_wrapper.js logs
 
-gemini-search:
-	npx tsx skills/gemini_wrapper.ts search "$(QUERY)"
+# --- Jules Agent ---
+jules-help:
+	python3 data/skills/jules-agent/jules_client.py --help
 
-gemini-research:
-	npx tsx skills/gemini_wrapper.ts research "$(QUERY)"
+jules:
+	python3 data/skills/jules-agent/jules_client.py $(A)
 
-gemini-image:
-	npx tsx skills/gemini_wrapper.ts image "$(QUERY)"
-
-# --- Create Boss Skills ---
+# --- Meta ---
 create-boss-skills-help:
 	@echo "Usage: make create-boss-skills NAME=name PROMPT=prompt"
 
 create-boss-skills:
-	npx tsx skills/create-boss-skills/index.ts --name="$(NAME)" --prompt="$(PROMPT)"
+	npx tsx data/skills/create-boss-skills/index.ts --name="$(NAME)" --prompt="$(PROMPT)"
+
+gemini-image:
+	npx tsx data/skills/gemini_wrapper.ts image "$(QUERY)"
 
 # --- Jules Agent (Direct API) ---
 JULES_BASE_URL = https://jules.googleapis.com/v1alpha

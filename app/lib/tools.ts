@@ -1,6 +1,7 @@
 import { MakeExecutor } from './make_executor.js';
 import { FileSystem } from './file_system.js';
 import { Nomenclature } from './nomenclature.js';
+import { TokenTracker } from './token_tracker.js';
 import toolsDefinitions from './tools.json' with { type: 'json' };
 
 /**
@@ -10,12 +11,14 @@ export class ToolRegistry {
   private make: MakeExecutor;
   private fs: FileSystem;
   private nomenclature?: Nomenclature;
+  private tokenTracker?: TokenTracker;
   private definitions: any[];
 
-  constructor(nomenclature?: Nomenclature) {
+  constructor(fs: FileSystem, nomenclature?: Nomenclature, tokenTracker?: TokenTracker) {
     this.make = new MakeExecutor();
-    this.fs = new FileSystem();
+    this.fs = fs;
     this.nomenclature = nomenclature;
+    this.tokenTracker = tokenTracker;
     this.definitions = structuredClone(toolsDefinitions as any[]);
     this._refreshMakeDescription();
   }
@@ -54,6 +57,13 @@ export class ToolRegistry {
       }
       case 'write_note': {
         return await this.fs.writeNote(args.filename, args.content);
+      }
+      case 'get_context_stats': {
+        if (!this.tokenTracker) {
+          return 'Error: Token tracker not initialized';
+        }
+        const rateLimitStats = this.tokenTracker.getRateLimitStats(args.model || 'meta-llama/llama-4-scout-17b-16e-instruct');
+        return `Current rate limit stats for ${rateLimitStats.model}:\n${JSON.stringify(rateLimitStats, null, 2)}`;
       }
       default: {
         // Try to run as a make target (for dynamically created skills)

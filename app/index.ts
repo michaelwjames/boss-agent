@@ -6,6 +6,7 @@ import path from 'path';
 import { GroqProvider } from './lib/groq_provider.js';
 import { FileSystem } from './lib/file_system.js';
 import { ToolRegistry } from './lib/tools.js';
+import { TokenTracker } from './lib/token_tracker.js';
 import { getEncoding } from 'js-tiktoken';
 import { Nomenclature } from './lib/nomenclature.js';
 
@@ -22,11 +23,39 @@ if (!GROQ_API_KEY) {
   process.exit(1);
 }
 
-const groq = new GroqProvider(GROQ_API_KEY, process.env.GROQ_MODEL, process.env.GROQ_WHISPER_MODEL);
+const groqModels = [
+  process.env.GROQ_MODEL,
+  process.env.GROQ_MODEL_2,
+  process.env.GROQ_MODEL_3
+].filter(Boolean) as string[];
+
+const groq = new GroqProvider(GROQ_API_KEY, groqModels.length > 0 ? groqModels : undefined, process.env.GROQ_WHISPER_MODEL);
 const fileSystem = new FileSystem();
 const nomenclature = new Nomenclature();
-const tools = new ToolRegistry(nomenclature);
+const tokenTracker = new TokenTracker();
+const tools = new ToolRegistry(fileSystem, nomenclature, tokenTracker);
 const enc = getEncoding('cl100k_base');
+
+async function safeChat(msgs: any[], defs: any[]): Promise<any> {
+  let attempts = 0;
+  while (attempts < 3) {
+    try {
+      return await groq.chat(msgs, defs);
+    } catch (err: any) {
+      if (err?.status === 400 && err?.error?.error?.code === 'tool_use_failed') {
+        attempts++;
+        console.warn(`[WARN] Model hallucinated tool call (attempt ${attempts}). Retrying...`);
+        msgs.push({
+          role: 'user',
+          content: 'CRITICAL ERROR: Your previous response caused a "tool_use_failed" error. You MUST output strictly valid JSON matching the tool schema. Do NOT output raw markdown or text.'
+        });
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('Max retries exceeded for tool calls.');
+}
 
 // Load Nomenclature catalog on startup
 nomenclature.loadCatalog().catch(err => console.error('Nomenclature load failed:', err));
@@ -101,7 +130,7 @@ CORE RULES:
 1. Always address the user as "Boss."
 2. You can ONLY execute predefined make targets via the 'run_make' tool. You cannot run arbitrary shell commands.
 3. You can save notes to memory using 'write_note'.
-4. You have access to context from vault/, memory/, and skills/ directories.
+4. You have access to context from data/vault/, data/memory/, and data/skills/ directories.
 5. Keep your responses concise and action-oriented unless the Boss asks for detail.
 6. If the Boss sent a voice note, you received the transcribed text. Confirm what you heard before acting on ambiguous commands.
 
@@ -128,10 +157,110 @@ ${vaultContext}
     messages = [...messages, ...historyToInclude, { role: 'user', content: userText }];
 
     const toolDefs = tools.getDefinitions();
-    let responseMessage = await groq.chat(messages, toolDefs);
+    
+    // Calculate and log context stats before sending request
+    const currentModel = groqModels[0] || 'meta-llama/llama-4-scout-17b-16e-instruct';
+    const contextStats = tokenTracker.calculateContextStats(
+      systemPrompt,
+      historyToInclude,
+      userText,
+      toolDefs,
+      currentModel
+    );
+    
+    console.log(`[TOKEN] Context: ${contextStats.currentContextTokens} tokens (${contextStats.percentOfContextWindow.toFixed(1)}% of ${tokenTracker.getModelLimits(currentModel).contextWindow})`);
+    
+    let responseMessage = await safeChat(messages, toolDefs);
+    
+    // Log the request for rate limit tracking
+    tokenTracker.logRequest(contextStats.currentContextTokens);
+
+    // Helper to parse inline hallucinated tool calls from fallback models
+    const parseInlineToolCalls = (msg: any) => {
+      if (!msg.content) return msg;
+      
+      const inlineToolCalls = [];
+      let cleanedContent = msg.content;
+
+      // Format 1: <function/name>json</function>
+      const functionRegex1 = /<function\/([^>]+)>([\s\S]*?)<\/function>/g;
+      let match;
+      while ((match = functionRegex1.exec(msg.content)) !== null) {
+        const name = match[1];
+        const argsString = match[2].trim();
+        
+        try {
+          JSON.parse(argsString);
+          inlineToolCalls.push({
+            id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: {
+              name,
+              arguments: argsString
+            }
+          });
+          cleanedContent = cleanedContent.replace(match[0], '').trim();
+        } catch (e) {
+          console.warn(`[WARN] Failed to parse inline tool call JSON for ${name}`);
+        }
+      }
+
+      // Format 2: <function/name={...}> - extract balanced JSON
+      const functionRegex2 = /<function\/([^=]+)=/g;
+      while ((match = functionRegex2.exec(msg.content)) !== null) {
+        const name = match[1];
+        const startIdx = match.index + match[0].length;
+        
+        // Find balanced JSON starting from startIdx
+        let depth = 0;
+        let endIdx = startIdx;
+        let foundStart = false;
+        
+        for (let i = startIdx; i < msg.content.length; i++) {
+          const char = msg.content[i];
+          if (char === '{') {
+            depth++;
+            foundStart = true;
+          } else if (char === '}') {
+            depth--;
+            if (foundStart && depth === 0) {
+              endIdx = i + 1;
+              break;
+            }
+          }
+        }
+        
+        if (foundStart && depth === 0) {
+          const argsString = msg.content.substring(startIdx, endIdx);
+          try {
+            JSON.parse(argsString);
+            inlineToolCalls.push({
+              id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              type: 'function',
+              function: {
+                name,
+                arguments: argsString
+              }
+            });
+            const fullMatch = msg.content.substring(match.index, endIdx);
+            cleanedContent = cleanedContent.replace(fullMatch, '').trim();
+          } catch (e) {
+            console.warn(`[WARN] Failed to parse inline tool call JSON for ${name}`);
+          }
+        }
+      }
+
+      if (inlineToolCalls.length > 0) {
+        msg.tool_calls = (msg.tool_calls || []).concat(inlineToolCalls);
+        msg.content = cleanedContent || null;
+      }
+      return msg;
+    };
+
+    responseMessage = parseInlineToolCalls(responseMessage);
 
     // Tool execution loop
-    while (responseMessage.tool_calls) {
+    while (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       messages.push(responseMessage);
 
       for (const toolCall of responseMessage.tool_calls) {
@@ -153,7 +282,8 @@ ${vaultContext}
       if ('sendTyping' in message.channel) {
         await (message.channel as any).sendTyping();
       }
-      responseMessage = await groq.chat(messages, toolDefs);
+      responseMessage = await safeChat(messages, toolDefs);
+      responseMessage = parseInlineToolCalls(responseMessage);
     }
 
     // Send final response (Discord has a 2000 char limit per message)

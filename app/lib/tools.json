@@ -29,7 +29,7 @@
     "type": "function",
     "function": {
       "name": "write_note",
-      "description": "Save a new note to the memory directory as a Markdown file.",
+      "description": "Save a new note to the data/memory directory as a Markdown file.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -46,6 +46,23 @@
           "filename",
           "content"
         ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_context_stats",
+      "description": "Get detailed statistics about the current context window usage, token consumption, and rate limits for the active model. Use this to monitor token usage and avoid hitting rate limits.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "The model name to check stats for (optional, defaults to current primary model)."
+          }
+        },
+        "required": []
       }
     }
   },

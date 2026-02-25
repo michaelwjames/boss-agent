@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  boss-agent:
+    build: .
+    container_name: boss-agent
+    restart: unless-stopped
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_WHISPER_MODEL=${GROQ_WHISPER_MODEL:-whisper-large-v3}
+      - GH_TOKEN=${GH_TOKEN}
+    volumes:
+      - ./data:/usr/src/app/data
+
+volumes:
+  boss-agent-data:
+    name: boss-agent-data

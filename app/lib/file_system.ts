@@ -1,19 +1,22 @@
 import fs from 'fs-extra';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export interface FileContent {
   file: string;
   content: string;
-}
-
-export interface FileChunk extends FileContent {
-  chunkId: number | null;
+  chunkId?: number | null;
 }
 
 export interface ScoredFile extends FileContent {
   score: number;
-  chunkId?: number | null;
 }
+
+export type FileChunk = FileContent;
 
 export class FileSystem {
   private vaultPath: string;
@@ -21,11 +24,13 @@ export class FileSystem {
   private skillsPath: string;
   private soulPath: string;
 
-  constructor(vaultPath = './vault', memoryPath = './memory', skillsPath = './skills') {
-    this.vaultPath = vaultPath;
-    this.memoryPath = memoryPath;
-    this.skillsPath = skillsPath;
-    this.soulPath = './soul.md';
+  constructor(vaultPath?: string, memoryPath?: string, skillsPath?: string) {
+    // Resolve paths relative to the project root (two levels up from this file: app/lib/file_system.ts)
+    const projectRoot = path.resolve(__dirname, '..', '..');
+    this.vaultPath = vaultPath || path.join(projectRoot, 'data', 'vault');
+    this.memoryPath = memoryPath || path.join(projectRoot, 'data', 'memory');
+    this.skillsPath = skillsPath || path.join(projectRoot, 'data', 'skills');
+    this.soulPath = path.join(projectRoot, 'data', 'soul.md');
   }
 
   async loadSoulPrompt(): Promise<string> {

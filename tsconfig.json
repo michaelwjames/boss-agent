@@ -8,12 +8,12 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "./app",
     "allowJs": true,
     "resolveJsonModule": true,
     "types": ["node", "jest"],
     "isolatedModules": true
   },
-  "include": ["**/*.ts", "**/*.js"],
+  "include": ["app/**/*.ts", "app/**/*.js"],
   "exclude": ["node_modules", "dist"]
 }
