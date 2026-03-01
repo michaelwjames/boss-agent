@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, Partials, Message } from 'discord.js';
-import { writeFile, unlink } from 'fs/promises';
+import { writeFile, unlink, readdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import { GroqProvider } from './lib/core/groq_provider.js';
@@ -11,6 +11,7 @@ import { getEncoding } from 'js-tiktoken';
 import { Nomenclature } from './lib/utils/nomenclature.js';
 import { TokenTruncationInterceptor } from './lib/interceptors/token_truncation.js';
 import { MemoryCompressor } from './lib/services/compressor.js';
+import { KairosEngine } from './lib/engine/kairos.js';
 
 // --- Configuration ---
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -39,6 +40,33 @@ const tools = new ToolRegistry(fileSystem, nomenclature, tokenTracker);
 tools.addInterceptor(new TokenTruncationInterceptor(tokenTracker));
 const compressor = new MemoryCompressor(groq, fileSystem);
 const enc = getEncoding('cl100k_base');
+
+// --- Types ---
+export interface NormalizedMessage {
+  sessionId: string;
+  authorId: string;
+  authorTag: string;
+  content: string;
+  attachments?: { url: string; contentType?: string }[];
+  reply: (content: string) => Promise<any>;
+  send: (content: string) => Promise<any>;
+  sendTyping?: () => Promise<void>;
+}
+
+// --- Lane Queue Management ---
+const sessionQueues = new Map<string, Promise<void>>();
+
+async function enqueueTask(sessionId: string, task: () => Promise<void>) {
+  const previousTask = sessionQueues.get(sessionId) || Promise.resolve();
+  const newTask = previousTask.then(async () => {
+    try {
+      await task();
+    } catch (err) {
+      console.error(`[QUEUE] Error in session ${sessionId}:`, err);
+    }
+  });
+  sessionQueues.set(sessionId, newTask);
+}
 
 async function safeChat(msgs: any[], defs: any[]): Promise<any> {
   let attempts = 0;
@@ -74,24 +102,17 @@ const client = new Client({
   partials: [Partials.Channel], // Required for DM support
 });
 
-client.once('ready', () => {
-  if (client.user) {
-    console.log(`Boss Agent is online as ${client.user.tag}`);
-  }
-});
-
-// --- Message Handler ---
-client.on('messageCreate', async (message: Message) => {
-  // Ignore messages from bots (including self)
-  if (message.author.bot) return;
-
-  const sessionId = String(message.channel.id);
+/**
+ * Core reasoning and execution loop
+ */
+async function processMessage(message: NormalizedMessage) {
+  const { sessionId } = message;
 
   try {
     let userText: string | null = null;
 
     // Handle voice/audio attachments — transcribe via Groq Whisper
-    const audioAttachment = message.attachments.find(a => {
+    const audioAttachment = message.attachments?.find(a => {
       const ct = a.contentType || '';
       return ct.startsWith('audio/') || ct.includes('ogg') || ct.includes('webm');
     });
@@ -119,8 +140,8 @@ client.on('messageCreate', async (message: Message) => {
     if (!userText) return;
 
     // Send typing indicator
-    if ('sendTyping' in message.channel) {
-      await (message.channel as any).sendTyping();
+    if (message.sendTyping) {
+      await message.sendTyping();
     }
 
     // Load context
@@ -138,6 +159,7 @@ CORE RULES:
 5. Use the 'read_memory' tool to fetch the full content of any file from the index if you need it to answer the Boss.
 6. Keep your responses concise and action-oriented unless the Boss asks for detail.
 7. If the Boss sent a voice note, you received the transcribed text. Confirm what you heard before acting on ambiguous commands.
+8. If you receive a [SYSTEM: KAIROS_TICK] message, you are waking up autonomously. Review your current context (especially tasks in memory). If nothing requires attention, reply with exactly 'NO_ACTION_REQUIRED' to prevent spamming the chat. If action is needed, use your tools or send a proactive message.
 
 ${soulPrompt ? `PERSONALITY:\n${soulPrompt}\n` : ''}
 AVAILABLE FILES:
@@ -284,8 +306,8 @@ ${fileIndex}
       }
 
       // Refresh typing indicator between tool calls
-      if ('sendTyping' in message.channel) {
-        await (message.channel as any).sendTyping();
+      if (message.sendTyping) {
+        await message.sendTyping();
       }
       responseMessage = await safeChat(messages, toolDefs);
       responseMessage = parseInlineToolCalls(responseMessage);
@@ -293,14 +315,18 @@ ${fileIndex}
 
     // Send final response (Discord has a 2000 char limit per message)
     const replyText = responseMessage.content || 'Done, Boss. No further output.';
-    if (replyText.length <= 2000) {
-      await message.reply(replyText);
+    
+    // Check for "NO_ACTION_REQUIRED"
+    if (replyText.trim() === 'NO_ACTION_REQUIRED') {
+      console.log(`[PROCESSOR] LLM requested silent output for session ${sessionId}.`);
     } else {
-      // Split long responses into chunks
-      const chunks = splitMessage(replyText, 2000);
-      for (const chunk of chunks) {
-        if ('send' in message.channel) {
-          await (message.channel as any).send(chunk);
+      if (replyText.length <= 2000) {
+        await message.reply(replyText);
+      } else {
+        // Split long responses into chunks
+        const chunks = splitMessage(replyText, 2000);
+        for (const chunk of chunks) {
+          await message.send(chunk);
         }
       }
     }
@@ -318,7 +344,6 @@ ${fileIndex}
     await fileSystem.saveSession(sessionId, updatedHistory);
 
     // Trigger background compression if limits are exceeded
-    // (e.g., > 20 messages or history tokens > 4000)
     const historyTokens = updatedHistory.reduce((sum, m) => sum + enc.encode(m.content || JSON.stringify(m.tool_calls || '')).length, 0);
     if (updatedHistory.length > 20 || historyTokens > 4000) {
       console.log(`[COMPRESSOR] Session ${sessionId} history size (${updatedHistory.length} msgs, ${historyTokens} tokens) exceeded threshold. Compressing in background...`);
@@ -333,11 +358,91 @@ ${fileIndex}
       console.error('Could not send error message:', sendError);
     }
   }
+}
+
+// --- Kairos Engine Initialization ---
+const kairos = new KairosEngine(async (tickMsg) => {
+  // Discover active sessions by reading session_history/
+  const sessionDir = './session_history';
+  try {
+    const files = await readdir(sessionDir);
+    const sessionIds = files
+      .filter(f => f.endsWith('.json'))
+      .map(f => f.replace('.json', ''));
+
+    console.log(`[KAIROS] Firing tick for ${sessionIds.length} sessions.`);
+    
+    for (const sessionId of sessionIds) {
+      // Map the generic tick message to a specific session
+      const sessionMsg: NormalizedMessage = {
+        ...tickMsg,
+        sessionId,
+        reply: async (content) => {
+          try {
+            const channel = await client.channels.fetch(sessionId);
+            if (channel && 'send' in channel) {
+              return await (channel as any).send(content);
+            }
+          } catch (err) {
+            console.error(`[KAIROS] Failed to send reply to session ${sessionId}:`, err);
+          }
+        },
+        send: async (content) => {
+          try {
+            const channel = await client.channels.fetch(sessionId);
+            if (channel && 'send' in channel) {
+              return await (channel as any).send(content);
+            }
+          } catch (err) {
+            console.error(`[KAIROS] Failed to send to session ${sessionId}:`, err);
+          }
+        },
+        sendTyping: async () => {
+          try {
+            const channel = await client.channels.fetch(sessionId);
+            if (channel && 'sendTyping' in channel) {
+              await (channel as any).sendTyping();
+            }
+          } catch {}
+        }
+      };
+
+      enqueueTask(sessionId, () => processMessage(sessionMsg));
+    }
+  } catch (err) {
+    console.error(`[KAIROS] Error discovering sessions:`, err);
+  }
+});
+
+// --- Message Handler ---
+client.on('messageCreate', async (message: Message) => {
+  if (message.author.bot) return;
+
+  const sessionId = String(message.channel.id);
+
+  const normalized: NormalizedMessage = {
+    sessionId,
+    authorId: message.author.id,
+    authorTag: message.author.tag,
+    content: message.content,
+    attachments: message.attachments.map(a => ({ url: a.url, contentType: a.contentType || undefined })),
+    reply: (content: string) => message.reply(content),
+    send: (content: string) => message.channel.send(content),
+    sendTyping: () => (message.channel as any).sendTyping?.()
+  };
+
+  enqueueTask(sessionId, () => processMessage(normalized));
+});
+
+client.once('ready', () => {
+  if (client.user) {
+    console.log(`Boss Agent is online as ${client.user.tag}`);
+    kairos.start();
+  }
 });
 
 /**
  * Split a long message into chunks that respect Discord's 2000 char limit.
- * Tries to split on newlines to avoid breaking mid-sentence.
  */
 function splitMessage(text: string, maxLength: number): string[] {
   const chunks: string[] = [];
