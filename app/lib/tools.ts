@@ -9,6 +9,7 @@ import { WriteNoteTool } from './tools/write_note.js';
 import { ReadMemoryTool } from './tools/read_memory.js';
 import { GetContextStatsTool } from './tools/get_context_stats.js';
 import { JulesTool } from './tools/jules.js';
+import { DisplayLargeOutputTool } from './tools/display_large_output.js';
 import toolsDefinitions from './config/tools.json' with { type: 'json' };
 
 /**
@@ -42,6 +43,7 @@ export class ToolRegistry {
     this.tools.set('write_note', new WriteNoteTool(this.fs));
     this.tools.set('read_memory', new ReadMemoryTool(this.fs));
     this.tools.set('jules', new JulesTool(this.make));
+    this.tools.set('display_large_output', new DisplayLargeOutputTool(this.fs));
     
     if (this.tokenTracker) {
       this.tools.set('get_context_stats', new GetContextStatsTool(this.tokenTracker));

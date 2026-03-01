@@ -120,29 +120,29 @@ gemini-image:
 JULES_CLIENT = python3 data/skills/jules-agent/jules_client.py
 
 jules-list-sources:
-	@$(JULES_CLIENT) list-sources $(if $(SIZE),--page-size $(SIZE))
+	@$(JULES_CLIENT) list-sources --format=plain $(if $(SIZE),--page-size $(SIZE))
 
 jules-list-sessions:
-	@$(JULES_CLIENT) list-sessions $(if $(SIZE),--page-size $(SIZE))
+	@$(JULES_CLIENT) list-sessions --format=plain $(if $(SIZE),--page-size $(SIZE))
 
 jules-get-session:
-	@$(JULES_CLIENT) get-session --session-id $(ID)
+	@$(JULES_CLIENT) get-session --session-id $(ID) --format=plain
 
 jules-delete-session:
-	@$(JULES_CLIENT) delete-session --session-id $(ID)
+	@$(JULES_CLIENT) delete-session --session-id $(ID) --format=plain
 
 jules-send-message:
-	@$(JULES_CLIENT) send-message --session-id $(ID) --message "$(MESSAGE)"
+	@$(JULES_CLIENT) send-message --session-id $(ID) --message "$(MESSAGE)" --format=plain
 
 jules-approve-plan:
-	@$(JULES_CLIENT) approve-plan --session-id $(ID)
+	@$(JULES_CLIENT) approve-plan --session-id $(ID) --format=plain
 
 jules-list-activities:
-	@$(JULES_CLIENT) list-activities --session-id $(ID) $(if $(SIZE),--page-size $(SIZE))
+	@$(JULES_CLIENT) list-activities --session-id $(ID) --format=plain $(if $(SIZE),--page-size $(SIZE))
 
 jules-create-session:
 	@$(JULES_CLIENT) create --prompt "$(PROMPT)" \
 		$(if $(TITLE),--title "$(TITLE)") \
 		$(if $(REPO),--repo $(REPO)) \
 		$(if $(BRANCH),--branch $(BRANCH)) \
-		--no-poll
+		--no-poll --format=plain

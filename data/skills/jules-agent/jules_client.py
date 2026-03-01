@@ -477,6 +477,7 @@ Examples:
     
     # Global arguments
     parser.add_argument("--api-key", help="Jules API Key")
+    parser.add_argument("--format", choices=["rich", "plain", "json"], default="rich", help="Output format")
     
     args = parser.parse_args()
     
@@ -541,26 +542,42 @@ Examples:
             sessions = result.get("sessions", [])
             
             if not sessions:
-                console.print("[yellow]No sessions found.[/yellow]")
+                if args.format == "json":
+                    print("[]")
+                else:
+                    console.print("[yellow]No sessions found.[/yellow]")
             else:
-                table = Table(title="Sessions")
-                table.add_column("ID", style="cyan")
-                table.add_column("Title", style="white")
-                table.add_column("State", style="green")
-                table.add_column("Created", style="blue")
-                
-                for session in sessions:
-                    table.add_row(
-                        session.get("name", ""),
-                        session.get("title", ""),
-                        session.get("state", ""),
-                        session.get("createTime", "")
-                    )
-                
-                console.print(table)
+                if args.format == "json":
+                    print(json.dumps(sessions, indent=2))
+                elif args.format == "plain":
+                    for session in sessions:
+                        name = session.get("name", "")
+                        title = session.get("title", "No Title")
+                        state = session.get("state", "UNKNOWN")
+                        created = session.get("createTime", "")
+                        print(f"{name} | {state} | {created} | {title}")
+                else:
+                    table = Table(title="Sessions")
+                    table.add_column("ID", style="cyan")
+                    table.add_column("Title", style="white")
+                    table.add_column("State", style="green")
+                    table.add_column("Created", style="blue")
+                    
+                    for session in sessions:
+                        table.add_row(
+                            session.get("name", ""),
+                            session.get("title", ""),
+                            session.get("state", ""),
+                            session.get("createTime", "")
+                        )
+                    
+                    console.print(table)
                 
                 if "nextPageToken" in result:
-                    console.print(f"\n[yellow]More results available. Use --page-token={result['nextPageToken']}[/yellow]")
+                    if args.format == "plain":
+                        print(f"More available: use --page-token={result['nextPageToken']}")
+                    elif args.format != "json":
+                        console.print(f"\n[yellow]More results available. Use --page-token={result['nextPageToken']}[/yellow]")
         
         elif args.command == "get-session":
             session = client.get_session(args.session_id)
@@ -583,15 +600,27 @@ Examples:
             activities = result.get("activities", [])
             
             if not activities:
-                console.print("[yellow]No activities found.[/yellow]")
+                if args.format == "json":
+                    print("[]")
+                else:
+                    console.print("[yellow]No activities found.[/yellow]")
             else:
-                for activity in activities:
-                    originator = activity.get("originator", "system")
-                    description = activity.get("description", "No description")
-                    create_time = activity.get("createTime", "")
-                    
-                    color = "green" if originator == "agent" else "blue" if originator == "user" else "white"
-                    console.print(f"[{color}][{create_time}] {originator.upper()}: {description}[/{color}]")
+                if args.format == "json":
+                    print(json.dumps(activities, indent=2))
+                elif args.format == "plain":
+                    for activity in activities:
+                        originator = activity.get("originator", "system")
+                        description = activity.get("description", "No description")
+                        create_time = activity.get("createTime", "")
+                        print(f"[{create_time}] {originator.upper()}: {description}")
+                else:
+                    for activity in activities:
+                        originator = activity.get("originator", "system")
+                        description = activity.get("description", "No description")
+                        create_time = activity.get("createTime", "")
+                        
+                        color = "green" if originator == "agent" else "blue" if originator == "user" else "white"
+                        console.print(f"[{color}][{create_time}] {originator.upper()}: {description}[/{color}]")
         
         elif args.command == "get-activity":
             activity = client.get_activity(args.session_id, args.activity_id)
@@ -602,29 +631,43 @@ Examples:
             sources = result.get("sources", [])
             
             if not sources:
-                console.print("[yellow]No sources found.[/yellow]")
+                if args.format == "json":
+                    print("[]")
+                else:
+                    console.print("[yellow]No sources found.[/yellow]")
             else:
-                table = Table(title="Connected Sources")
-                table.add_column("Name", style="cyan")
-                table.add_column("Owner/Repo", style="white")
-                table.add_column("Default Branch", style="green")
-                table.add_column("Private", style="yellow")
-                
-                for source in sources:
-                    github_repo = source.get("githubRepo", {})
-                    owner = github_repo.get("owner", "")
-                    repo = github_repo.get("repo", "")
-                    default_branch = github_repo.get("defaultBranch", {}).get("displayName", "")
-                    is_private = "Yes" if github_repo.get("isPrivate", False) else "No"
+                if args.format == "json":
+                    print(json.dumps(sources, indent=2))
+                elif args.format == "plain":
+                    for source in sources:
+                        github_repo = source.get("githubRepo", {})
+                        owner = github_repo.get("owner", "")
+                        repo = github_repo.get("repo", "")
+                        name = source.get("name", "")
+                        is_private = "Private" if github_repo.get("isPrivate", False) else "Public"
+                        print(f"{name} | {owner}/{repo} | {is_private}")
+                else:
+                    table = Table(title="Connected Sources")
+                    table.add_column("Name", style="cyan")
+                    table.add_column("Owner/Repo", style="white")
+                    table.add_column("Default Branch", style="green")
+                    table.add_column("Private", style="yellow")
                     
-                    table.add_row(
-                        source.get("name", ""),
-                        f"{owner}/{repo}",
-                        default_branch,
-                        is_private
-                    )
-                
-                console.print(table)
+                    for source in sources:
+                        github_repo = source.get("githubRepo", {})
+                        owner = github_repo.get("owner", "")
+                        repo = github_repo.get("repo", "")
+                        default_branch = github_repo.get("defaultBranch", {}).get("displayName", "")
+                        is_private = "Yes" if github_repo.get("isPrivate", False) else "No"
+                        
+                        table.add_row(
+                            source.get("name", ""),
+                            f"{owner}/{repo}",
+                            default_branch,
+                            is_private
+                        )
+                    
+                    console.print(table)
         
         elif args.command == "get-source":
             source = client.get_source(args.source_id)
