@@ -427,8 +427,17 @@ client.on('messageCreate', async (message: Message) => {
     content: message.content,
     attachments: message.attachments.map(a => ({ url: a.url, contentType: a.contentType || undefined })),
     reply: (content: string) => message.reply(content),
-    send: (content: string) => message.channel.send(content),
-    sendTyping: () => (message.channel as any).sendTyping?.()
+    send: (content: string) => {
+      if (message.channel.isTextBased()) {
+        return (message.channel as any).send(content);
+      }
+      throw new Error('Channel does not support sending messages');
+    },
+    sendTyping: () => {
+      if (message.channel.isTextBased()) {
+        return (message.channel as any).sendTyping();
+      }
+    }
   };
 
   enqueueTask(sessionId, () => processMessage(normalized));
