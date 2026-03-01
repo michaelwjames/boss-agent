@@ -116,43 +116,33 @@ create-boss-skills:
 gemini-image:
 	npx tsx data/skills/gemini_wrapper.ts image "$(QUERY)"
 
-# --- Jules Agent (Direct API) ---
-JULES_BASE_URL = https://jules.googleapis.com/v1alpha
+# --- Jules Agent (Python Client) ---
+JULES_CLIENT = python3 data/skills/jules-agent/jules_client.py
 
 jules-list-sources:
-	@curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sources?pageSize=$(or $(SIZE),30) | jq .
+	@$(JULES_CLIENT) list-sources $(if $(SIZE),--page-size $(SIZE))
 
 jules-list-sessions:
-	@curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sessions?pageSize=$(or $(SIZE),30) | jq .
+	@$(JULES_CLIENT) list-sessions $(if $(SIZE),--page-size $(SIZE))
 
 jules-get-session:
-	@curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sessions/$(ID) | jq .
+	@$(JULES_CLIENT) get-session --session-id $(ID)
 
 jules-delete-session:
-	@curl -s -X DELETE -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sessions/$(ID)
+	@$(JULES_CLIENT) delete-session --session-id $(ID)
 
 jules-send-message:
-	@curl -s -X POST -H "x-goog-api-key: $(JULES_API_KEY)" -H "Content-Type: application/json" \
-		-d '{"prompt": "$(MESSAGE)"}' \
-		$(JULES_BASE_URL)/sessions/$(ID):sendMessage | jq .
+	@$(JULES_CLIENT) send-message --session-id $(ID) --message "$(MESSAGE)"
 
 jules-approve-plan:
-	@curl -s -X POST -H "x-goog-api-key: $(JULES_API_KEY)" -H "Content-Type: application/json" \
-		-d '{}' \
-		$(JULES_BASE_URL)/sessions/$(ID):approvePlan | jq .
+	@$(JULES_CLIENT) approve-plan --session-id $(ID)
 
 jules-list-activities:
-	@curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sessions/$(ID)/activities?pageSize=$(or $(SIZE),50) | jq .
+	@$(JULES_CLIENT) list-activities --session-id $(ID) $(if $(SIZE),--page-size $(SIZE))
 
 jules-create-session:
-	@if [ -n "$(REPO)" ]; then \
-		SOURCE_ID=$$(curl -s -H "x-goog-api-key: $(JULES_API_KEY)" $(JULES_BASE_URL)/sources?pageSize=100 | jq -r '.sources[] | select(.githubRepo.owner + "/" + .githubRepo.repo == "$(REPO)") | .name'); \
-		if [ -z "$$SOURCE_ID" ]; then echo "Error: Source for $(REPO) not found."; exit 1; fi; \
-		curl -s -X POST -H "x-goog-api-key: $(JULES_API_KEY)" -H "Content-Type: application/json" \
-			-d '{"prompt": "$(PROMPT)", "title": "$(or $(TITLE),Session for $(REPO))", "automationMode": "$(or $(MODE),AUTOMATION_MODE_UNSPECIFIED)", "sourceContext": {"source": "'$$SOURCE_ID'", "githubRepoContext": {"startingBranch": "$(or $(BRANCH),main)"}}}' \
-			$(JULES_BASE_URL)/sessions | jq .; \
-	else \
-		curl -s -X POST -H "x-goog-api-key: $(JULES_API_KEY)" -H "Content-Type: application/json" \
-			-d '{"prompt": "$(PROMPT)", "title": "$(or $(TITLE),Repoless Session)", "automationMode": "$(or $(MODE),AUTOMATION_MODE_UNSPECIFIED)"}' \
-			$(JULES_BASE_URL)/sessions | jq .; \
-	fi
+	@$(JULES_CLIENT) create --prompt "$(PROMPT)" \
+		$(if $(TITLE),--title "$(TITLE)") \
+		$(if $(REPO),--repo $(REPO)) \
+		$(if $(BRANCH),--branch $(BRANCH)) \
+		--no-poll

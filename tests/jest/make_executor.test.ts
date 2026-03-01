@@ -1,33 +1,31 @@
 import { jest } from '@jest/globals';
-import { MakeExecutor } from '../../lib/make_executor.js';
+import { MakeExecutor } from '../../app/lib/executors/make_executor.js';
+import { TokenTracker } from '../../app/lib/analytics/token_tracker.js';
+import { TokenTruncationInterceptor } from '../../app/lib/interceptors/token_truncation.js';
 
-// We need to use doMock for ESM if we want to mock modules
-jest.unstable_mockModule('child_process', () => ({
-  exec: jest.fn(),
-  promisify: (fn: any) => fn, // Simplified promisify mock
-}));
-
-describe('MakeExecutor', () => {
+describe('MakeExecutor and TokenTruncationInterceptor', () => {
   let executor: MakeExecutor;
+  let tokenTracker: TokenTracker;
+  let interceptor: TokenTruncationInterceptor;
 
   beforeEach(() => {
     executor = new MakeExecutor();
+    tokenTracker = new TokenTracker();
+    interceptor = new TokenTruncationInterceptor(tokenTracker, 100); // Low threshold for testing
   });
 
-  test('truncates long stdout', () => {
-    const longOutput = 'a'.repeat(6000);
-    // Directly mock the _truncate for simpler testing since we already verified it
-    const result = (executor as any)._truncate(longOutput);
+  test('TokenTruncationInterceptor truncates long output', async () => {
+    const longOutput = 'a '.repeat(200); // 200 tokens approximately
+    const result = await interceptor.postExecute('test_tool', {}, longOutput);
 
-    expect(result.length).toBeLessThan(6000);
-    expect(result).toContain('[... Output truncated due to length ...]');
+    expect(tokenTracker.countTokens(result)).toBeGreaterThan(0);
+    expect(result).toContain('[Output truncated due to token limits');
   });
 
-  test('truncates long stderr', () => {
-    const longOutput = 'e'.repeat(6000);
-    const result = (executor as any)._truncate(longOutput);
+  test('TokenTruncationInterceptor does not truncate short output', async () => {
+    const shortOutput = 'short output';
+    const result = await interceptor.postExecute('test_tool', {}, shortOutput);
 
-    expect(result.length).toBeLessThan(6000);
-    expect(result).toContain('[... Output truncated due to length ...]');
+    expect(result).toBe(shortOutput);
   });
 });

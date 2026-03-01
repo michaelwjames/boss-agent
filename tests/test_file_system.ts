@@ -1,4 +1,4 @@
-import { FileSystem } from '../lib/file_system.js';
+import { FileSystem } from '../dist/lib/data/file_system.js';
 import fs from 'fs-extra';
 import assert from 'assert';
 
@@ -11,10 +11,10 @@ async function testFileSystem() {
   await fs.ensureDir('./test_skills');
   await fs.writeFile('./test_vault/test.md', 'Vault content');
   
-  // Test readAllNotes
-  const context = await fsUtil.readAllNotes();
+  // Test getFileSystemIndex (replaces readAllNotes)
+  const context = await fsUtil.getFileSystemIndex();
   console.log('Context:\n', context);
-  assert(context.includes('Vault content'));
+  assert(context.includes('test.md'));
   
   // Test writeNote
   await fsUtil.writeNote('new_note', 'Memory content');

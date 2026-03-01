@@ -3,12 +3,14 @@ import { Client, GatewayIntentBits, Partials, Message } from 'discord.js';
 import { writeFile, unlink } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
-import { GroqProvider } from './lib/groq_provider.js';
-import { FileSystem } from './lib/file_system.js';
+import { GroqProvider } from './lib/core/groq_provider.js';
+import { FileSystem } from './lib/data/file_system.js';
 import { ToolRegistry } from './lib/tools.js';
-import { TokenTracker } from './lib/token_tracker.js';
+import { TokenTracker } from './lib/analytics/token_tracker.js';
 import { getEncoding } from 'js-tiktoken';
-import { Nomenclature } from './lib/nomenclature.js';
+import { Nomenclature } from './lib/utils/nomenclature.js';
+import { TokenTruncationInterceptor } from './lib/interceptors/token_truncation.js';
+import { MemoryCompressor } from './lib/services/compressor.js';
 
 // --- Configuration ---
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -34,6 +36,8 @@ const fileSystem = new FileSystem();
 const nomenclature = new Nomenclature();
 const tokenTracker = new TokenTracker();
 const tools = new ToolRegistry(fileSystem, nomenclature, tokenTracker);
+tools.addInterceptor(new TokenTruncationInterceptor(tokenTracker));
+const compressor = new MemoryCompressor(groq, fileSystem);
 const enc = getEncoding('cl100k_base');
 
 async function safeChat(msgs: any[], defs: any[]): Promise<any> {
@@ -58,7 +62,7 @@ async function safeChat(msgs: any[], defs: any[]): Promise<any> {
 }
 
 // Load Nomenclature catalog on startup
-nomenclature.loadCatalog().catch(err => console.error('Nomenclature load failed:', err));
+nomenclature.loadCatalog().catch((err: any) => console.error('Nomenclature load failed:', err));
 
 const client = new Client({
   intents: [
@@ -121,7 +125,7 @@ client.on('messageCreate', async (message: Message) => {
 
     // Load context
     const soulPrompt = await fileSystem.loadSoulPrompt();
-    const vaultContext = await fileSystem.readAllNotes(userText);
+    const fileIndex = await fileSystem.getFileSystemIndex();
     const history = await fileSystem.loadSession(sessionId);
 
     const systemPrompt = `You are the "Boss Agent," a strictly obedient but personality-rich AI assistant.
@@ -130,13 +134,14 @@ CORE RULES:
 1. Always address the user as "Boss."
 2. You can ONLY execute predefined make targets via the 'run_make' tool. You cannot run arbitrary shell commands.
 3. You can save notes to memory using 'write_note'.
-4. You have access to context from data/vault/, data/memory/, and data/skills/ directories.
-5. Keep your responses concise and action-oriented unless the Boss asks for detail.
-6. If the Boss sent a voice note, you received the transcribed text. Confirm what you heard before acting on ambiguous commands.
+4. You have access to a lightweight index of files in vault/, memory/, and skills/ directories.
+5. Use the 'read_memory' tool to fetch the full content of any file from the index if you need it to answer the Boss.
+6. Keep your responses concise and action-oriented unless the Boss asks for detail.
+7. If the Boss sent a voice note, you received the transcribed text. Confirm what you heard before acting on ambiguous commands.
 
 ${soulPrompt ? `PERSONALITY:\n${soulPrompt}\n` : ''}
-CURRENT CONTEXT:
-${vaultContext}
+AVAILABLE FILES:
+${fileIndex}
 `;
 
     // Token-aware sliding window
@@ -302,7 +307,23 @@ ${vaultContext}
 
     // Save history (up to last 50 messages, sliding window will handle context on load)
     messages.push(responseMessage);
-    await fileSystem.saveSession(sessionId, messages.filter((m: any) => m.role !== 'system').slice(-50));
+    
+    // We want to exclude the initial system prompt from the history, 
+    // but keep session summaries which also use the 'system' role.
+    const updatedHistory = messages.filter((m: any, index: number) => {
+      if (index === 0 && m.role === 'system') return false; // Skip the main system prompt
+      return true;
+    }).slice(-50);
+    
+    await fileSystem.saveSession(sessionId, updatedHistory);
+
+    // Trigger background compression if limits are exceeded
+    // (e.g., > 20 messages or history tokens > 4000)
+    const historyTokens = updatedHistory.reduce((sum, m) => sum + enc.encode(m.content || JSON.stringify(m.tool_calls || '')).length, 0);
+    if (updatedHistory.length > 20 || historyTokens > 4000) {
+      console.log(`[COMPRESSOR] Session ${sessionId} history size (${updatedHistory.length} msgs, ${historyTokens} tokens) exceeded threshold. Compressing in background...`);
+      compressor.compressSession(sessionId, updatedHistory).catch((err: any) => console.error(`[COMPRESSOR] Error in background compression:`, err));
+    }
 
   } catch (error: any) {
     console.error('Error handling message:', error);

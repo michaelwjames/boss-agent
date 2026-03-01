@@ -8,8 +8,6 @@ const execAsync = promisify(exec);
 // Shell metacharacters that must never appear in target names or argument values
 const DANGEROUS_CHARS = /[;|&`$(){}[\]<>!\n\r\\]/;
 
-const MAX_OUTPUT_LENGTH = 5000; // Characters per stream
-
 export class MakeExecutor {
   private makefilePath: string;
   private allowedTargets: Set<string>;
@@ -108,26 +106,16 @@ export class MakeExecutor {
     try {
       const { stdout, stderr } = await execAsync(command, { timeout: 60000 });
       return {
-        stdout: this._truncate(stdout),
-        stderr: this._truncate(stderr),
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
         exitCode: 0,
       };
     } catch (error: any) {
       return {
-        stdout: error.stdout ? this._truncate(error.stdout) : '',
-        stderr: error.stderr ? this._truncate(error.stderr) : this._truncate(error.message),
+        stdout: error.stdout ? error.stdout.trim() : '',
+        stderr: error.stderr ? error.stderr.trim() : error.message.trim(),
         exitCode: error.code || 1,
       };
     }
-  }
-
-  /**
-   * Truncate string if it exceeds MAX_OUTPUT_LENGTH
-   */
-  private _truncate(str: string): string {
-    if (!str) return '';
-    const trimmed = str.trim();
-    if (trimmed.length <= MAX_OUTPUT_LENGTH) return trimmed;
-    return `${trimmed.slice(0, MAX_OUTPUT_LENGTH)}\n\n[... Output truncated due to length ...]`;
   }
 }

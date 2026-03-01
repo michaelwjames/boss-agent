@@ -1,4 +1,4 @@
-import { FileSystem } from '../lib/file_system.js';
+import { FileSystem } from '../lib/data/file_system.js';
 
 const fs = new FileSystem();
 

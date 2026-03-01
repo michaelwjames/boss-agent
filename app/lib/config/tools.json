@@ -2,6 +2,25 @@
   {
     "type": "function",
     "function": {
+      "name": "read_memory",
+      "description": "Read the full content of a file from the vault, memory, or skills directory.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "The name of the file to read (e.g., 'project_plan.md')."
+          }
+        },
+        "required": [
+          "filename"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "run_make",
       "description": "Execute a predefined make target. Only targets defined in the root Makefile are allowed. You cannot run arbitrary shell commands.",
       "parameters": {

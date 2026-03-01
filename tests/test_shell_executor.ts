@@ -1,4 +1,4 @@
-import { MakeExecutor } from '../lib/make_executor.js';
+import { MakeExecutor } from '../lib/executors/make_executor.js';
 import assert from 'assert';
 
 async function testMakeExecutor() {

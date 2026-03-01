@@ -1,4 +1,4 @@
-import { Nomenclature } from '../lib/nomenclature.js';
+import { Nomenclature } from '../lib/utils/nomenclature.js';
 import assert from 'assert';
 
 function testNomenclature() {

@@ -1,8 +1,15 @@
-import { MakeExecutor } from './make_executor.js';
-import { FileSystem } from './file_system.js';
-import { Nomenclature } from './nomenclature.js';
-import { TokenTracker } from './token_tracker.js';
-import toolsDefinitions from './tools.json' with { type: 'json' };
+import { MakeExecutor } from './executors/make_executor.js';
+import { FileSystem } from './data/file_system.js';
+import { Nomenclature } from './utils/nomenclature.js';
+import { TokenTracker } from './analytics/token_tracker.js';
+import { ToolInterceptor } from './interceptors/base.js';
+import { Tool } from './tools/base.js';
+import { RunMakeTool } from './tools/run_make.js';
+import { WriteNoteTool } from './tools/write_note.js';
+import { ReadMemoryTool } from './tools/read_memory.js';
+import { GetContextStatsTool } from './tools/get_context_stats.js';
+import { JulesTool } from './tools/jules.js';
+import toolsDefinitions from './config/tools.json' with { type: 'json' };
 
 /**
  * Tool registry — single source of truth for all tool definitions and executors.
@@ -13,6 +20,8 @@ export class ToolRegistry {
   private nomenclature?: Nomenclature;
   private tokenTracker?: TokenTracker;
   private definitions: any[];
+  private interceptors: ToolInterceptor[] = [];
+  private tools: Map<string, Tool> = new Map();
 
   constructor(fs: FileSystem, nomenclature?: Nomenclature, tokenTracker?: TokenTracker) {
     this.make = new MakeExecutor();
@@ -20,7 +29,30 @@ export class ToolRegistry {
     this.nomenclature = nomenclature;
     this.tokenTracker = tokenTracker;
     this.definitions = structuredClone(toolsDefinitions as any[]);
+    
+    this._initializeTools();
     this._refreshMakeDescription();
+  }
+
+  /**
+   * Initialize the tool implementations.
+   */
+  private _initializeTools(): void {
+    this.tools.set('run_make', new RunMakeTool(this.make));
+    this.tools.set('write_note', new WriteNoteTool(this.fs));
+    this.tools.set('read_memory', new ReadMemoryTool(this.fs));
+    this.tools.set('jules', new JulesTool(this.make));
+    
+    if (this.tokenTracker) {
+      this.tools.set('get_context_stats', new GetContextStatsTool(this.tokenTracker));
+    }
+  }
+
+  /**
+   * Register a tool interceptor.
+   */
+  addInterceptor(interceptor: ToolInterceptor): void {
+    this.interceptors.push(interceptor);
   }
 
   /**
@@ -50,44 +82,40 @@ export class ToolRegistry {
    * @returns - Tool execution result
    */
   async execute(name: string, args: any): Promise<string> {
-    switch (name) {
-      case 'run_make': {
-        const result = await this.make.run(args.target, args.args);
-        return `STDOUT: ${result.stdout}\nSTDERR: ${result.stderr}\nExit Code: ${result.exitCode}`;
-      }
-      case 'write_note': {
-        return await this.fs.writeNote(args.filename, args.content);
-      }
-      case 'get_context_stats': {
-        if (!this.tokenTracker) {
-          return 'Error: Token tracker not initialized';
-        }
-        const rateLimitStats = this.tokenTracker.getRateLimitStats(args.model || 'meta-llama/llama-4-scout-17b-16e-instruct');
-        return `Current rate limit stats for ${rateLimitStats.model}:\n${JSON.stringify(rateLimitStats, null, 2)}`;
-      }
-      case 'jules': {
-        // Direct mapping to the new make targets based on action
-        const targetName = `jules-${args.action}`;
-        
-        // Pass relevant arguments to the make target
-        const makeArgs: Record<string, string> = {};
-        if (args.sessionId) makeArgs.ID = args.sessionId;
-        if (args.prompt) makeArgs.MESSAGE = args.prompt;
-        if (args.repo) makeArgs.REPO = args.repo;
-        
-        const result = await this.make.run(targetName, makeArgs);
-        return `STDOUT: ${result.stdout}\nSTDERR: ${result.stderr}\nExit Code: ${result.exitCode}`;
-      }
-      default: {
-        // Try to run as a make target (for dynamically created skills)
-        // First, reload allowed targets to catch any new ones
-        this.make.reload();
-        const result = await this.make.run(name, args);
-        if (result.stderr && result.stderr.includes('is not allowed')) {
-          return `Error: Unknown tool "${name}"`;
-        }
-        return `STDOUT: ${result.stdout}\nSTDERR: ${result.stderr}\nExit Code: ${result.exitCode}`;
+    let currentArgs = args;
+
+    // Run pre-execute interceptors
+    for (const interceptor of this.interceptors) {
+      if (interceptor.preExecute) {
+        currentArgs = await interceptor.preExecute(name, currentArgs);
       }
     }
+
+    let result = '';
+
+    // Strategy: Look up the tool in the map, otherwise fallback to dynamic make target
+    const tool = this.tools.get(name);
+    if (tool) {
+      result = await tool.execute(currentArgs);
+    } else {
+      // Try to run as a make target (for dynamically created skills)
+      // First, reload allowed targets to catch any new ones
+      this.make.reload();
+      const cmdResult = await this.make.run(name, currentArgs);
+      if (cmdResult.stderr && cmdResult.stderr.includes('is not allowed')) {
+        result = `Error: Unknown tool "${name}"`;
+      } else {
+        result = `STDOUT: ${cmdResult.stdout}\nSTDERR: ${cmdResult.stderr}\nExit Code: ${cmdResult.exitCode}`;
+      }
+    }
+
+    // Run post-execute interceptors
+    for (const interceptor of this.interceptors) {
+      if (interceptor.postExecute) {
+        result = await interceptor.postExecute(name, currentArgs, result);
+      }
+    }
+
+    return result;
   }
 }

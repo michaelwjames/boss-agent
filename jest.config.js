@@ -3,7 +3,9 @@ export default {
   testEnvironment: 'node',
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    '^app/(.*)\\.js$': '<rootDir>/app/$1',
   },
+  moduleDirectories: ['node_modules', 'app'],
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',
