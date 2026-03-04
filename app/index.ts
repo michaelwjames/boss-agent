@@ -155,7 +155,7 @@ CORE RULES:
 1. Always address the user as "Boss."
 2. You can ONLY execute predefined make targets via the 'run_make' tool. You cannot run arbitrary shell commands.
 3. You can save notes to memory using 'write_note'.
-4. You have access to a lightweight index of files in vault/, memory/, and skills/ directories.
+4. You have access to a lightweight index of files in vault/, memory/, and skills/ directories. Files marked with [ALWAYS_REMEMBER] are especially important.
 5. Use the 'read_memory' tool to fetch the full content of any file from the index if you need it to answer the Boss.
 6. Keep your responses concise and action-oriented unless the Boss asks for detail.
 7. If the Boss sent a voice note, you received the transcribed text. Confirm what you heard before acting on ambiguous commands.
@@ -164,6 +164,12 @@ CORE RULES:
 ${soulPrompt ? `PERSONALITY:\n${soulPrompt}\n` : ''}
 AVAILABLE FILES:
 ${fileIndex}
+
+SYSTEM SNAPSHOT:
+- Session ID: ${sessionId}
+- Current Model: ${groqModels[0] || 'llama-3.3-70b-versatile'}
+- Memory Location: data/memory/
+- Vault Location: data/vault/
 `;
 
     // Token-aware sliding window
@@ -186,7 +192,7 @@ ${fileIndex}
     const toolDefs = tools.getDefinitions();
     
     // Calculate and log context stats before sending request
-    const currentModel = groqModels[0] || 'meta-llama/llama-4-scout-17b-16e-instruct';
+    const currentModel = groqModels[0] || 'llama-3.3-70b-versatile';
     const contextStats = tokenTracker.calculateContextStats(
       systemPrompt,
       historyToInclude,
@@ -290,20 +296,24 @@ ${fileIndex}
     while (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       messages.push(responseMessage);
 
-      for (const toolCall of responseMessage.tool_calls) {
-        const { name, arguments: argsString } = toolCall.function;
-        const args = JSON.parse(argsString);
+      const toolResults = await Promise.all(
+        responseMessage.tool_calls.map(async (toolCall: any) => {
+          const { name, arguments: argsString } = toolCall.function;
+          const args = JSON.parse(argsString);
 
-        console.log(`[TOOL] Executing ${name} with args:`, args);
+          console.log(`[TOOL] Executing ${name} in parallel with args:`, args);
 
-        const result = await tools.execute(name, args);
+          const result = await tools.execute(name, args);
 
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: result,
-        });
-      }
+          return {
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: result,
+          };
+        })
+      );
+
+      messages.push(...toolResults);
 
       // Refresh typing indicator between tool calls
       if (message.sendTyping) {

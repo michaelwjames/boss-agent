@@ -26,7 +26,10 @@ export class KairosEngine {
         sessionId: 'AUTO_BROADCAST', // Placeholder, will be mapped to active sessions in integration
         authorId: 'system-kairos',
         authorTag: 'KairosEngine',
-        content: '[SYSTEM: KAIROS_TICK] Time to check your tasks, evaluate in-progress work, and decide if you need to proactively contact the Boss.',
+        content: `[SYSTEM: KAIROS_TICK] Time: ${new Date().toISOString()}.
+Review your current context (tasks, session logs, recent work).
+If nothing requires attention, reply with 'NO_ACTION_REQUIRED'.
+If action is needed, use your tools or send a proactive message to the Boss.`,
         reply: async (content: string) => console.log(`[KAIROS] Reply: ${content}`),
         send: async (content: string) => console.log(`[KAIROS] Send: ${content}`),
         sendTyping: async () => {}

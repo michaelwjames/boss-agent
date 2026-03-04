@@ -1,6 +1,6 @@
 import { exec, execSync } from 'child_process';
 import { promisify } from 'util';
-import { readFileSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
 import { CommandResult } from './shell_executor.js';
 
 const execAsync = promisify(exec);
@@ -11,10 +11,13 @@ const DANGEROUS_CHARS = /[;|&`$(){}[\]<>!\n\r\\]/;
 export class MakeExecutor {
   private makefilePath: string;
   private allowedTargets: Set<string>;
+  private helpCache: string | null = null;
+  private lastMtime: number = 0;
 
   constructor(makefilePath = './Makefile') {
     this.makefilePath = makefilePath;
-    this.allowedTargets = this._parseTargets();
+    this.allowedTargets = new Set();
+    this.reload();
   }
 
   /**
@@ -39,10 +42,25 @@ export class MakeExecutor {
   }
 
   /**
-   * Reload allowed targets from the Makefile.
+   * Reload allowed targets from the Makefile if it has changed.
    */
-  reload(): void {
-    this.allowedTargets = this._parseTargets();
+  reload(force = false): void {
+    try {
+      const stats = statSync(this.makefilePath);
+      const mtime = stats.mtimeMs;
+
+      if (force || mtime > this.lastMtime) {
+        console.log(`[MAKE] Reloading targets from ${this.makefilePath}...`);
+        this.allowedTargets = this._parseTargets();
+        this.helpCache = null; // Invalidate help cache
+        this.lastMtime = mtime;
+      }
+    } catch (error) {
+      if (force) {
+        this.allowedTargets = this._parseTargets();
+        this.helpCache = null;
+      }
+    }
   }
 
   /**
@@ -50,6 +68,8 @@ export class MakeExecutor {
    * Derived from running 'make help'.
    */
   getHelp(): string {
+    if (this.helpCache) return this.helpCache;
+
     try {
       const helpOutput = execSync(`make -f ${this.makefilePath} help`, { encoding: 'utf8', timeout: 2000 });
       const lines = helpOutput.split('\n');
@@ -57,6 +77,8 @@ export class MakeExecutor {
         .map(line => line.trim())
         .filter(line => line.startsWith('make '))
         .join('; ');
+
+      this.helpCache = commands;
       return commands;
     } catch (error) {
       console.warn('Warning: Could not run "make help". Using fallback list.');
