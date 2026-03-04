@@ -47,6 +47,7 @@ export class FileSystem {
 
   /**
    * Returns a lightweight index of all available files in vault, memory, and skills.
+   * Identifies files that should be "always remembered".
    */
   async getFileSystemIndex(): Promise<string> {
     const vaultFiles = await this._readDir(this.vaultPath);
@@ -57,12 +58,18 @@ export class FileSystem {
     
     index += "\n[VAULT (data/vault/)]\n";
     index += vaultFiles.length > 0 
-      ? vaultFiles.map(f => `- ${f.file} (${f.content.length} bytes)`).join('\n')
+      ? vaultFiles.map(f => {
+          const isAlways = f.content.includes('always_remember: true');
+          return `- ${f.file} (${f.content.length} bytes)${isAlways ? ' [ALWAYS_REMEMBER]' : ''}`;
+        }).join('\n')
       : "No vault notes found.\n";
 
     index += "\n\n[MEMORY (data/memory/)]\n";
     index += memoryFiles.length > 0
-      ? memoryFiles.map(f => `- ${f.file} (${f.content.length} bytes)`).join('\n')
+      ? memoryFiles.map(f => {
+          const isAlways = f.content.includes('always_remember: true');
+          return `- ${f.file} (${f.content.length} bytes)${isAlways ? ' [ALWAYS_REMEMBER]' : ''}`;
+        }).join('\n')
       : "No memory notes found.\n";
 
     index += "\n\n[SKILLS (data/skills/)]\n";
@@ -169,7 +176,25 @@ export class FileSystem {
     if (!filename.endsWith('.md')) filename += '.md';
     const filePath = path.join(this.memoryPath, filename);
     await fs.ensureDir(this.memoryPath);
-    await fs.writeFile(filePath, content, 'utf-8');
+
+    let finalContent = content;
+
+    // Enforce YAML frontmatter convention
+    if (!content.trim().startsWith('---')) {
+      const title = filename.replace('.md', '').replace(/[-_]/g, ' ');
+      const date = new Date().toISOString().split('T')[0];
+      const frontmatter = `---
+title: ${title}
+tags: []
+date_created: ${date}
+always_remember: false
+---
+
+`;
+      finalContent = frontmatter + content;
+    }
+
+    await fs.writeFile(filePath, finalContent, 'utf-8');
     return `Note saved to ${filename}`;
   }
 
