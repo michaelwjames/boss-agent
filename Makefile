@@ -92,8 +92,8 @@ pr-close:
 
 # --- Reminders ---
 remind:
-	npx tsx data/skills/remind.ts "$(DELAY)" "$(DISCORD_WEBHOOK_URL)" "$(MESSAGE)" &
-	@echo "Reminder scheduled: '$(MESSAGE)' in $(DELAY)"
+	@npx tsx data/skills/remind.ts "$(DELAY)" "$(shell echo $$DISCORD_WEBHOOK_URL)" "$(MESSAGE)" > /tmp/remind_$(shell date +%s).log 2>&1 &
+	@echo "✓ Reminder scheduled: '$(MESSAGE)' in $(DELAY)"
 
 # --- Integrations ---
 safe-gemini:
