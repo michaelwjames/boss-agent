@@ -10,6 +10,7 @@ import { TokenTracker } from './lib/analytics/token_tracker.js';
 import { getEncoding } from 'js-tiktoken';
 import { Nomenclature } from './lib/utils/nomenclature.js';
 import { TokenTruncationInterceptor } from './lib/interceptors/token_truncation.js';
+import { LoggingInterceptor } from './lib/interceptors/logging.js';
 import { MemoryCompressor } from './lib/services/compressor.js';
 import { KairosEngine } from './lib/engine/kairos.js';
 
@@ -38,6 +39,7 @@ const nomenclature = new Nomenclature();
 const tokenTracker = new TokenTracker();
 const tools = new ToolRegistry(fileSystem, nomenclature, tokenTracker);
 tools.addInterceptor(new TokenTruncationInterceptor(tokenTracker));
+tools.addInterceptor(new LoggingInterceptor());
 const compressor = new MemoryCompressor(groq, fileSystem);
 const enc = getEncoding('cl100k_base');
 
