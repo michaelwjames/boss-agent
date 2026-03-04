@@ -176,7 +176,25 @@ export class FileSystem {
     if (!filename.endsWith('.md')) filename += '.md';
     const filePath = path.join(this.memoryPath, filename);
     await fs.ensureDir(this.memoryPath);
-    await fs.writeFile(filePath, content, 'utf-8');
+
+    let finalContent = content;
+
+    // Enforce YAML frontmatter convention
+    if (!content.trim().startsWith('---')) {
+      const title = filename.replace('.md', '').replace(/[-_]/g, ' ');
+      const date = new Date().toISOString().split('T')[0];
+      const frontmatter = `---
+title: ${title}
+tags: []
+date_created: ${date}
+always_remember: false
+---
+
+`;
+      finalContent = frontmatter + content;
+    }
+
+    await fs.writeFile(filePath, finalContent, 'utf-8');
     return `Note saved to ${filename}`;
   }
 

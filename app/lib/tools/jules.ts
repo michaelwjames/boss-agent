@@ -18,12 +18,21 @@ export class JulesTool implements Tool {
     const makeArgs: Record<string, string> = {};
     if (args.sessionId) makeArgs.ID = args.sessionId;
     if (args.action === 'create' && args.prompt) makeArgs.PROMPT = args.prompt;
-    if (args.action === 'send-message' && args.prompt) makeArgs.MESSAGE = args.prompt;
+    if ((args.action === 'send-message' || args.action === 'sendMessage') && args.prompt) {
+      makeArgs.MESSAGE = args.prompt;
+    }
     if (args.repo) makeArgs.REPO = args.repo;
     if (args.title) makeArgs.TITLE = args.title;
     if (args.branch) makeArgs.BRANCH = args.branch;
+    if (args.pageSize) makeArgs.SIZE = String(args.pageSize);
     
-    const cmdResult = await this.make.run(targetName, makeArgs);
+    // Special handling for the action name to match Makefile targets
+    let finalTarget = targetName;
+    if (args.action === 'list-activities') finalTarget = 'jules-list-activities';
+    if (args.action === 'get-session') finalTarget = 'jules-get-session';
+    if (args.action === 'list-sessions') finalTarget = 'jules-list-sessions';
+
+    const cmdResult = await this.make.run(finalTarget, makeArgs);
     return `STDOUT: ${cmdResult.stdout}\nSTDERR: ${cmdResult.stderr}\nExit Code: ${cmdResult.exitCode}`;
   }
 }
