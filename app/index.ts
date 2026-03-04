@@ -375,7 +375,7 @@ SYSTEM SNAPSHOT:
 // --- Kairos Engine Initialization ---
 const kairos = new KairosEngine(async (tickMsg) => {
   // Discover active sessions by reading session_history/
-  const sessionDir = './session_history';
+  const sessionDir = './data/session_history';
   try {
     const files = await readdir(sessionDir);
     const sessionIds = files

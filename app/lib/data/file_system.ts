@@ -19,18 +19,28 @@ export interface ScoredFile extends FileContent {
 export type FileChunk = FileContent;
 
 export class FileSystem {
+  private projectRoot: string;
   private vaultPath: string;
   private memoryPath: string;
   private skillsPath: string;
+  private largeOutputsPath: string;
+  private sessionHistoryPath: string;
   private soulPath: string;
 
   constructor(vaultPath?: string, memoryPath?: string, skillsPath?: string) {
-    // Resolve paths relative to the project root (two levels up from this file: app/lib/file_system.ts)
-    const projectRoot = path.resolve(__dirname, '..', '..');
-    this.vaultPath = vaultPath || path.join(projectRoot, 'data', 'vault');
-    this.memoryPath = memoryPath || path.join(projectRoot, 'data', 'memory');
-    this.skillsPath = skillsPath || path.join(projectRoot, 'data', 'skills');
-    this.soulPath = path.join(projectRoot, 'data', 'soul.md');
+    const possibleRoot = path.resolve(__dirname, '..', '..', '..');
+    this.projectRoot = (possibleRoot === '/' || possibleRoot.includes('tests')) ? process.cwd() : possibleRoot;
+
+    if (!this.projectRoot || this.projectRoot === '/') {
+      this.projectRoot = '/app';
+    }
+
+    this.vaultPath = vaultPath || path.join(this.projectRoot, 'data', 'vault');
+    this.memoryPath = memoryPath || path.join(this.projectRoot, 'data', 'memory');
+    this.skillsPath = skillsPath || path.join(this.projectRoot, 'data', 'skills');
+    this.largeOutputsPath = path.join(this.projectRoot, 'data', 'large_outputs');
+    this.sessionHistoryPath = path.join(this.projectRoot, 'data', 'session_history');
+    this.soulPath = path.join(this.projectRoot, 'data', 'soul.md');
   }
 
   async loadSoulPrompt(): Promise<string> {
@@ -44,15 +54,12 @@ export class FileSystem {
     return '';
   }
 
-
-  /**
-   * Returns a lightweight index of all available files in vault, memory, and skills.
-   * Identifies files that should be "always remembered".
-   */
   async getFileSystemIndex(): Promise<string> {
     const vaultFiles = await this._readDir(this.vaultPath);
     const memoryFiles = await this._readDir(this.memoryPath);
     const skillsFiles = await this._readDir(this.skillsPath);
+    const largeOutputs = await this._readDir(this.largeOutputsPath, false);
+    const sessions = await this._readDir(this.sessionHistoryPath, false);
 
     let index = "--- FILE SYSTEM INDEX ---\n";
     
@@ -77,28 +84,51 @@ export class FileSystem {
       ? skillsFiles.map(f => `- ${f.file} (${f.content.length} bytes)`).join('\n')
       : "No skills found.\n";
 
+    index += "\n\n[LARGE OUTPUTS (data/large_outputs/)]\n";
+    index += largeOutputs.length > 0
+      ? largeOutputs.map(f => `- ${f.file} (${f.content.length} bytes)`).join('\n')
+      : "No large outputs found.\n";
+
+    index += "\n\n[SESSION HISTORY (data/session_history/)]\n";
+    index += sessions.length > 0
+      ? sessions.map(f => `- ${f.file} (${f.content.length} bytes)`).join('\n')
+      : "No session history found.\n";
+
     return index;
   }
 
   async readFileContent(filename: string): Promise<string> {
-    // Security: Prevent directory traversal attacks
-    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
-      throw new Error('Invalid filename: path traversal not allowed');
+    const normalizedPath = path.normalize(filename);
+    if (normalizedPath.startsWith('..') || path.isAbsolute(normalizedPath)) {
+      throw new Error('Invalid filename: path traversal or absolute path not allowed');
     }
     
-    const paths = [
-      path.join(this.vaultPath, filename),
-      path.join(this.memoryPath, filename),
-      path.join(this.skillsPath, filename),
-      // Also try with .md if not present
-      path.join(this.vaultPath, `${filename}.md`),
-      path.join(this.memoryPath, `${filename}.md`),
-      path.join(this.skillsPath, `${filename}.md`),
+    const allowedRoots = [
+      this.vaultPath,
+      this.memoryPath,
+      this.skillsPath,
+      this.largeOutputsPath,
+      this.sessionHistoryPath
     ];
 
-    for (const p of paths) {
-      if (await fs.pathExists(p) && (await fs.stat(p)).isFile()) {
-        return await fs.readFile(p, 'utf-8');
+    const candidates = [];
+
+    const dataRoot = path.join(this.projectRoot, 'data');
+    candidates.push(path.join(dataRoot, filename));
+
+    for (const root of allowedRoots) {
+      candidates.push(path.join(root, filename));
+      if (!filename.endsWith('.md')) {
+        candidates.push(path.join(root, `${filename}.md`));
+      }
+    }
+
+    for (const p of candidates) {
+      const resolved = path.resolve(p);
+      const isAllowed = allowedRoots.some(root => resolved.startsWith(path.resolve(root)));
+
+      if (isAllowed && await fs.pathExists(resolved) && (await fs.stat(resolved)).isFile()) {
+        return await fs.readFile(resolved, 'utf-8');
       }
     }
 
@@ -157,20 +187,26 @@ export class FileSystem {
     return chunks;
   }
 
-  private async _readDir(dirPath: string): Promise<FileContent[]> {
+  private async _readDir(dirPath: string, mdOnly = true): Promise<FileContent[]> {
     if (!await fs.pathExists(dirPath)) return [];
     const files = await fs.readdir(dirPath);
-    const mdFiles = files.filter(f => f.endsWith('.md'));
+    const targetFiles = mdOnly ? files.filter(f => f.endsWith('.md')) : files;
 
     const contents: FileContent[] = [];
-    for (const file of mdFiles) {
+    for (const file of targetFiles) {
       const filePath = path.join(dirPath, file);
-      const content = await fs.readFile(filePath, 'utf-8');
-      contents.push({ file, content });
+      try {
+        const stat = await fs.stat(filePath);
+        if (stat.isFile()) {
+          const content = await fs.readFile(filePath, 'utf-8');
+          contents.push({ file, content });
+        }
+      } catch (err) {
+        // Skip files that can't be read
+      }
     }
     return contents;
   }
-
 
   async writeNote(filename: string, content: string): Promise<string> {
     if (!filename.endsWith('.md')) filename += '.md';
@@ -179,7 +215,6 @@ export class FileSystem {
 
     let finalContent = content;
 
-    // Enforce YAML frontmatter convention
     if (!content.trim().startsWith('---')) {
       const title = filename.replace('.md', '').replace(/[-_]/g, ' ');
       const date = new Date().toISOString().split('T')[0];
@@ -199,14 +234,13 @@ always_remember: false
   }
 
   async saveSession(sessionId: string, messages: any[]): Promise<void> {
-    const sessionDir = './session_history';
-    if (!await fs.pathExists(sessionDir)) await fs.mkdirp(sessionDir);
-    const filePath = path.join(sessionDir, `${sessionId}.json`);
+    if (!await fs.pathExists(this.sessionHistoryPath)) await fs.mkdirp(this.sessionHistoryPath);
+    const filePath = path.join(this.sessionHistoryPath, `${sessionId}.json`);
     await fs.writeJson(filePath, messages, { spaces: 2 });
   }
 
   async loadSession(sessionId: string): Promise<any[]> {
-    const filePath = path.join('./session_history', `${sessionId}.json`);
+    const filePath = path.join(this.sessionHistoryPath, `${sessionId}.json`);
     if (await fs.pathExists(filePath)) {
       return await fs.readJson(filePath);
     }
