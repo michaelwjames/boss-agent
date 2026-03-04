@@ -51,11 +51,14 @@ export class JulesTool implements Tool {
               'create',
               'list-sessions',
               'get-session',
+              'get-session-status',
+              'get-pending-feedback',
               'send-message',
               'approve-plan',
               'list-sources',
               'list-activities',
               'delete-session',
+              'fetch-latest-sessions',
             ],
             description: 'The action to perform with Jules.',
           },
@@ -113,7 +116,10 @@ export class JulesTool implements Tool {
     let finalTarget = targetName;
     if (args.action === 'list-activities') finalTarget = 'jules-list-activities';
     if (args.action === 'get-session') finalTarget = 'jules-get-session';
+    if (args.action === 'get-session-status') finalTarget = 'jules-get-session-status';
+    if (args.action === 'get-pending-feedback') finalTarget = 'jules-get-pending-feedback';
     if (args.action === 'list-sessions') finalTarget = 'jules-list-sessions';
+    if (args.action === 'fetch-latest-sessions') finalTarget = 'jules-fetch-latest-sessions';
 
     const cmdResult = await this.make.run(finalTarget, makeArgs);
     const humanizedStdout = this._humanizeTimestamps(cmdResult.stdout);

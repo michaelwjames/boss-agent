@@ -116,8 +116,11 @@ create-boss-skills:
 gemini-image:
 	npx tsx data/skills/gemini_wrapper.ts image "$(QUERY)"
 
-# --- Jules Agent (Python Client) ---
-JULES_CLIENT = python3 data/skills/jules-agent/jules_client.py
+# --- Jules Agent (Python Client with Caching) ---
+JULES_CLIENT = python3 data/skills/jules-agent/jules_cli.py
+
+jules-fetch-latest-sessions:
+	@$(JULES_CLIENT) fetch-latest-sessions $(if $(LIMIT),--limit $(LIMIT))
 
 jules-list-sources:
 	@$(JULES_CLIENT) list-sources $(if $(SIZE),--page-size $(SIZE))
@@ -128,31 +131,40 @@ jules-list-sessions:
 jules-get-session:
 	@sid="$(ID)"; \
 	if [ -z "$$sid" ]; then sid="$(SESSION_ID)"; fi; \
-	$(JULES_CLIENT) get-session --session-id "$$sid"
+	$(JULES_CLIENT) get-session --id "$$sid"
+
+jules-get-session-status:
+	@sid="$(ID)"; \
+	if [ -z "$$sid" ]; then sid="$(SESSION_ID)"; fi; \
+	$(JULES_CLIENT) get-session-status --id "$$sid" $(if $(ACTIVITIES),--activities $(ACTIVITIES))
+
+jules-get-pending-feedback:
+	@sid="$(ID)"; \
+	if [ -z "$$sid" ]; then sid="$(SESSION_ID)"; fi; \
+	$(JULES_CLIENT) get-pending-feedback --id "$$sid"
 
 jules-delete-session:
 	@sid="$(ID)"; \
 	if [ -z "$$sid" ]; then sid="$(SESSION_ID)"; fi; \
-	$(JULES_CLIENT) delete-session --session-id "$$sid"
+	$(JULES_CLIENT) delete-session --id "$$sid"
 
 jules-send-message:
 	@sid="$(ID)"; \
 	if [ -z "$$sid" ]; then sid="$(SESSION_ID)"; fi; \
-	$(JULES_CLIENT) send-message --session-id "$$sid" --message "$(MESSAGE)"
+	$(JULES_CLIENT) send-message --id "$$sid" --message "$(MESSAGE)"
 
 jules-approve-plan:
 	@sid="$(ID)"; \
 	if [ -z "$$sid" ]; then sid="$(SESSION_ID)"; fi; \
-	$(JULES_CLIENT) approve-plan --session-id "$$sid"
+	$(JULES_CLIENT) approve-plan --id "$$sid"
 
 jules-list-activities:
 	@sid="$(ID)"; \
 	if [ -z "$$sid" ]; then sid="$(SESSION_ID)"; fi; \
-	$(JULES_CLIENT) list-activities --session-id "$$sid" $(if $(SIZE),--page-size $(SIZE))
+	$(JULES_CLIENT) list-activities --id "$$sid" $(if $(SIZE),--page-size $(SIZE))
 
 jules-create-session:
 	@$(JULES_CLIENT) create --prompt "$(PROMPT)" \
 		$(if $(TITLE),--title "$(TITLE)") \
 		$(if $(REPO),--repo $(REPO)) \
-		$(if $(BRANCH),--branch $(BRANCH)) \
-		--no-poll
+		$(if $(BRANCH),--branch $(BRANCH))
