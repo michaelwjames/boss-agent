@@ -242,6 +242,18 @@ always_remember: false
   async loadSession(sessionId: string): Promise<any[]> {
     const filePath = path.join(this.sessionHistoryPath, `${sessionId}.json`);
     if (await fs.pathExists(filePath)) {
+      const stat = await fs.stat(filePath);
+      const lastModified = stat.mtimeMs;
+      const now = Date.now();
+
+      // 10 minutes inactivity rule (600,000 ms)
+      if (now - lastModified > 10 * 60 * 1000) {
+        const timestamp = new Date(lastModified).toISOString().replace(/[:.]/g, '-');
+        const archivePath = path.join(this.sessionHistoryPath, `${sessionId}_${timestamp}.json`);
+        await fs.rename(filePath, archivePath);
+        return [];
+      }
+
       return await fs.readJson(filePath);
     }
     return [];
