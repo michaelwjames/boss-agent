@@ -2,7 +2,7 @@ import { MakeExecutor } from './executors/make_executor.js';
 import { FileSystem } from './data/file_system.js';
 import { TokenTracker } from './analytics/token_tracker.js';
 import { ToolInterceptor } from './interceptors/base.js';
-import { Tool, ToolDefinition } from './tools/base.js';
+import { Tool, ToolDefinition, ToolContext } from './tools/base.js';
 import { RunMakeTool } from './tools/run_make.js';
 import { WriteNoteTool } from './tools/write_note.js';
 import { ReadMemoryTool } from './tools/read_memory.js';
@@ -103,9 +103,10 @@ export class ToolRegistry {
    * Execute a tool call by name.
    * @param name - Tool name
    * @param args - Tool arguments
+   * @param context - Optional context for interacting with the environment
    * @returns - Tool execution result
    */
-  async execute(name: string, args: any): Promise<string> {
+  async execute(name: string, args: any, context?: ToolContext): Promise<string> {
     let currentArgs = args;
 
     // Run pre-execute interceptors
@@ -120,7 +121,7 @@ export class ToolRegistry {
     // Strategy: Look up the tool in the map, otherwise fallback to dynamic make target
     const tool = this.tools.get(name);
     if (tool) {
-      result = await tool.execute(currentArgs);
+      result = await tool.execute(currentArgs, context);
     } else {
       // Try to run as a make target (for dynamically created skills)
       // First, reload allowed targets to catch any new ones

@@ -1,4 +1,4 @@
-import { Tool, ToolDefinition } from './base.js';
+import { Tool, ToolDefinition, ToolContext } from './base.js';
 import { MakeExecutor } from '../executors/make_executor.js';
 
 /**
@@ -92,7 +92,7 @@ export class JulesTool implements Tool {
     this.make = make;
   }
 
-  async execute(args: any): Promise<string> {
+  async execute(args: any, context?: ToolContext): Promise<string> {
     const targetName = `jules-${args.action}`;
 
     // Pass relevant arguments to the make target
@@ -124,12 +124,18 @@ export class JulesTool implements Tool {
     const cmdResult = await this.make.run(finalTarget, makeArgs);
     const humanizedStdout = this._humanizeTimestamps(cmdResult.stdout);
 
-    // Return structured JSON output
+    // If context is available, send the output directly to the channel
+    if (context && humanizedStdout) {
+      await context.send(humanizedStdout);
+    }
+
+    // Return structured JSON output with a truncated stdout for the LLM
     const output = {
-      stdout: humanizedStdout,
+      stdout: humanizedStdout.length > 500 ? `${humanizedStdout.substring(0, 500)}... (full output displayed in channel)` : humanizedStdout,
       stderr: cmdResult.stderr,
       exitCode: cmdResult.exitCode,
-      success: cmdResult.exitCode === 0
+      success: cmdResult.exitCode === 0,
+      _fullStdout: humanizedStdout // Internal use for history persistence
     };
 
     return JSON.stringify(output);
