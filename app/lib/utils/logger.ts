@@ -1,13 +1,18 @@
 /**
- * Logging utility with timestamps for boss-agent
+ * Logging utility with timestamps and file output for boss-agent
  */
+
+import { writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
 
 export class Logger {
   private static instance: Logger;
   private prefix: string;
+  private logDir: string;
 
   private constructor(prefix: string = '') {
     this.prefix = prefix;
+    this.logDir = './data/logs';
   }
 
   static getInstance(prefix: string = ''): Logger {
@@ -26,25 +31,56 @@ export class Logger {
     return `[${hours}:${minutes}:${seconds}.${milliseconds}]`;
   }
 
+  private getDateString(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private async writeToFile(level: string, ...args: any[]): Promise<void> {
+    try {
+      // Ensure logs directory exists
+      await mkdir(this.logDir, { recursive: true });
+      
+      // Create daily log file
+      const logFileName = `console-${this.getDateString()}.log`;
+      const logFilePath = join(this.logDir, logFileName);
+      
+      // Format log entry
+      const timestamp = this.getTimestamp();
+      const logEntry = `${timestamp} ${this.prefix ? this.prefix + ' ' : ''}${level}: ${args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ')}\n`;
+      
+      // Append to log file
+      await writeFile(logFilePath, logEntry, { flag: 'a' });
+    } catch (error) {
+      // Silently fail to avoid infinite loops, but log to console
+      console.error('Failed to write to log file:', error);
+    }
+  }
+
   log(...args: any[]): void {
-    console.log(this.getTimestamp(), this.prefix, ...args);
+    this.writeToFile('', ...args).catch(() => {});
   }
 
   error(...args: any[]): void {
-    console.error(this.getTimestamp(), this.prefix, 'ERROR:', ...args);
+    this.writeToFile('ERROR', ...args).catch(() => {});
   }
 
   warn(...args: any[]): void {
-    console.warn(this.getTimestamp(), this.prefix, 'WARN:', ...args);
+    this.writeToFile('WARN', ...args).catch(() => {});
   }
 
   info(...args: any[]): void {
-    console.info(this.getTimestamp(), this.prefix, 'INFO:', ...args);
+    this.writeToFile('INFO', ...args).catch(() => {});
   }
 
   debug(...args: any[]): void {
     if (process.env.DEBUG === 'true') {
-      console.debug(this.getTimestamp(), this.prefix, 'DEBUG:', ...args);
+      this.writeToFile('DEBUG', ...args).catch(() => {});
     }
   }
 }

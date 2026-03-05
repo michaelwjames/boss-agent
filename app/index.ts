@@ -16,6 +16,10 @@ import { KairosEngine } from './lib/engine/kairos.js';
 import { log } from './lib/utils/logger.js';
 import { TerminalAdapter } from './lib/adapters/terminal.js';
 import { sanitizeHistory, stripInternalFields } from "./lib/history_sanitizer.js";
+import { ConsoleInterceptor } from './lib/utils/console_interceptor.js';
+
+// Initialize console logging to files - this captures ALL console output
+ConsoleInterceptor.getInstance().intercept();
 
 // --- Configuration ---
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -494,6 +498,7 @@ const kairos = new KairosEngine(async (tickMsg) => {
         ...tickMsg,
         sessionId,
         reply: async (content) => {
+          console.log(`\n[BOSS] ${content}\n`);
           try {
             const channel = await client.channels.fetch(sessionId);
             if (channel && 'send' in channel) {
@@ -504,6 +509,7 @@ const kairos = new KairosEngine(async (tickMsg) => {
           }
         },
         send: async (content) => {
+          console.log(`\n[BOSS] ${content}\n`);
           try {
             const channel = await client.channels.fetch(sessionId);
             if (channel && 'send' in channel) {
@@ -536,16 +542,23 @@ client.on('messageCreate', async (message: Message) => {
 
   const sessionId = String(message.channel.id);
 
+  // Log incoming message to terminal
+  console.log(`\n[USER] ${message.author.tag}: ${message.content}${message.attachments.size > 0 ? ` [${message.attachments.size} attachment(s)]` : ''}\n`);
+
   const normalized: NormalizedMessage = {
     sessionId,
     authorId: message.author.id,
     authorTag: message.author.tag,
     content: message.content,
     attachments: message.attachments.map(a => ({ url: a.url, contentType: a.contentType || undefined })),
-    reply: (content: string) => message.reply(content),
-    send: (content: string) => {
+    reply: async (content: string) => {
+      console.log(`\n[BOSS] ${content}\n`);
+      return await message.reply(content);
+    },
+    send: async (content: string) => {
+      console.log(`\n[BOSS] ${content}\n`);
       if (message.channel.isTextBased()) {
-        return (message.channel as any).send(content);
+        return await (message.channel as any).send(content);
       }
       throw new Error('Channel does not support sending messages');
     },

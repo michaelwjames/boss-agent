@@ -41,6 +41,9 @@ export class TerminalAdapter {
         return;
       }
 
+      // Log incoming user message to terminal
+      console.log(`\n[USER] TerminalUser: ${trimmed}\n`);
+
       // Create a normalized message for terminal input
       const message: NormalizedMessage = {
         sessionId: this.sessionId,
