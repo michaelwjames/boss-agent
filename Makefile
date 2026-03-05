@@ -37,6 +37,7 @@ help:
 	@echo "  Jules Agent (External PR/Repo tool):"
 	@echo "    make jules-help          - Show Jules Agent help"
 	@echo "    make jules A=\"--action args\" - Run Jules Agent with custom arguments"
+	@echo "    make jules-show-cached-sessions - Show last 5 sessions from cache (no API call)"
 	@echo ""
 	@echo "  Meta:"
 	@echo "    make create-boss-skills NAME=x PROMPT=y - Create a new skill"
@@ -168,3 +169,6 @@ jules-create-session:
 		$(if $(TITLE),--title "$(TITLE)") \
 		$(if $(REPO),--repo $(REPO)) \
 		$(if $(BRANCH),--branch $(BRANCH))
+
+jules-show-cached-sessions:
+	@$(JULES_CLIENT) show-cached-sessions $(if $(LIMIT),--limit $(LIMIT))

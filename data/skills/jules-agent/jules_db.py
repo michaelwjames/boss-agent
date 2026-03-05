@@ -106,13 +106,27 @@ class JulesDatabase:
             
             now = datetime.utcnow().isoformat()
             
-            # Use INSERT OR REPLACE to handle both insert and update
+            # Use INSERT ... ON CONFLICT DO UPDATE to preserve the existing id on updates.
+            # INSERT OR REPLACE would DELETE + INSERT, assigning a new AUTOINCREMENT id each time.
             cursor.execute("""
-                INSERT OR REPLACE INTO sessions (
+                INSERT INTO sessions (
                     name, title, state, create_time, update_time, url,
                     prompt, source_context, automation_mode, require_plan_approval,
                     outputs, activities, last_synced_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    title = excluded.title,
+                    state = excluded.state,
+                    create_time = excluded.create_time,
+                    update_time = excluded.update_time,
+                    url = excluded.url,
+                    prompt = excluded.prompt,
+                    source_context = excluded.source_context,
+                    automation_mode = excluded.automation_mode,
+                    require_plan_approval = excluded.require_plan_approval,
+                    outputs = excluded.outputs,
+                    activities = excluded.activities,
+                    last_synced_at = excluded.last_synced_at
             """, (
                 session_name,
                 session_data.get('title', ''),

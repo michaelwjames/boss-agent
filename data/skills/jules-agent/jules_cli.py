@@ -34,6 +34,13 @@ def format_session_list(sessions: list, cached: bool = False) -> str:
         state = session.get('state', 'UNKNOWN')
         created = session.get('create_time', '')
         
+        # Truncate prompt to 150 characters if present
+        prompt = session.get('prompt', '')
+        if prompt:
+            if len(prompt) > 150:
+                prompt = prompt[:147] + "..."
+            title = f"{title} | {prompt}"
+        
         # Format timestamp to relative time
         if created:
             try:
@@ -100,10 +107,10 @@ def format_minimal_session(session: dict) -> dict:
     source_context = session.get('source_context') or session.get('sourceContext')
     parsed_context = JulesDatabase.parse_source_context(source_context)
     
-    # Truncate prompt to 200 characters
+    # Truncate prompt to 150 characters
     prompt = session.get('prompt', '')
-    if len(prompt) > 200:
-        prompt = prompt[:200] + '...'
+    if len(prompt) > 150:
+        prompt = prompt[:147] + '...'
     
     # Handle both API (createTime) and DB (create_time) field names
     create_time = session.get('create_time') or session.get('createTime')
@@ -150,7 +157,7 @@ def main():
     create_parser.add_argument("--prompt", required=True, help="Instruction for Jules")
     create_parser.add_argument("--title", help="Optional session title")
     create_parser.add_argument("--repo", help="Repository name (owner/repo)")
-    create_parser.add_argument("--branch", default="main", help="Starting branch")
+    create_parser.add_argument("--branch", default="master", help="Starting branch")
     create_parser.add_argument("--require-approval", action="store_true", help="Require plan approval")
     
     # Send message command
@@ -170,9 +177,13 @@ def main():
     list_activities_parser.add_argument("--force-refresh", action="store_true", help="Bypass cache")
     
     # List sources command
-    list_sources_parser = subparsers.add_parser("list-sources", help="List all connected sources")
-    list_sources_parser.add_argument("--page-size", type=int, default=30, help="Number of sources to return")
+    list_sources_parser = subparsers.add_parser("list-sources", help="List available sources")
+    list_sources_parser.add_argument("--page-size", type=int, default=10, help="Number of sources to return")
     list_sources_parser.add_argument("--format", choices=["plain", "json"], default="plain", help="Output format")
+    
+    # Show cached sessions command
+    show_cached_sessions_parser = subparsers.add_parser("show-cached-sessions", help="Show last 5 sessions from cache (no API call)")
+    show_cached_sessions_parser.add_argument("--limit", type=int, default=5, help="Number of sessions to show (default: 5)")
     
     # Fetch latest sessions command
     fetch_latest_parser = subparsers.add_parser("fetch-latest-sessions", help="Fetch and return only new/updated sessions")
@@ -371,6 +382,40 @@ def main():
                 print(result.get('last_agent_message', 'No message content'))
                 print("-" * 40)
                 print(f"Use 'make jules-send-message ID={args.id} MESSAGE=\"your reply\"' to respond.")
+        
+        elif args.command == "show-cached-sessions":
+            from jules_db import JulesDatabase
+            
+            # Get sessions directly from cache (no API call)
+            db = JulesDatabase()
+            sessions = db.list_sessions(limit=args.limit)
+            
+            if not sessions:
+                print("No cached sessions found.")
+                return
+            
+            print("Cached Sessions:")
+            for session in sessions:
+                # Extract session info
+                name = session.get('name', '')
+                title = session.get('title', 'No Title')
+                state = session.get('state', 'UNKNOWN')
+                update_time = session.get('update_time', session.get('create_time', ''))
+                
+                # Parse source context for repo and branch
+                source_context = session.get('source_context')
+                repo_info = JulesDatabase.parse_source_context(source_context)
+                repo_name = repo_info['repo_name'] or 'Unknown'
+                branch_name = repo_info['branch_name'] or 'Unknown'
+                
+                # Format update time to human readable
+                formatted_time = JulesDatabase.format_timestamp_human(update_time)
+                
+                # Truncate title to max 50 chars
+                if len(title) > 50:
+                    title = title[:47] + "..."
+                
+                print(f"- {name} | {repo_name}:{branch_name} | {state} | {title} | {formatted_time}")
     
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

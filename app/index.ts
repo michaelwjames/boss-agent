@@ -15,8 +15,7 @@ import { MemoryCompressor } from './lib/services/compressor.js';
 import { KairosEngine } from './lib/engine/kairos.js';
 import { log } from './lib/utils/logger.js';
 import { TerminalAdapter } from './lib/adapters/terminal.js';
-import { sanitizeHistory } from "./lib/history_sanitizer.js";
-import { stripInternalFields } from "./lib/history_sanitizer.js";
+import { sanitizeHistory, stripInternalFields } from "./lib/history_sanitizer.js";
 
 // --- Configuration ---
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -55,9 +54,6 @@ const enc = getEncoding('cl100k_base');
 // Track Groq API calls for debugging
 let groqCallCount = 0;
 let groqCallTypes = new Map<string, number>();
-
-// Track tool execution patterns for loop detection
-let toolExecutionHistory: Array<{name: string, args: string}> = [];
 
 // --- Types ---
 export interface NormalizedMessage {
@@ -129,6 +125,9 @@ const client = new Client({
  */
 async function processMessage(message: NormalizedMessage) {
   const { sessionId } = message;
+
+  // Track tool execution patterns for loop detection (per-message, per-session)
+  let toolExecutionHistory: Array<{name: string, args: string}> = [];
 
   try {
     let userText: string | null = null;
@@ -317,8 +316,9 @@ SYSTEM SNAPSHOT:
     };
 
     responseMessage = parseInlineToolCalls(responseMessage);
+    let toolExecutionHistory: any[] = [];
+    let shouldSendFinalResponse = true; // Track if we should send final response
 
-    // Tool execution loop
     let toolRound = 0;
     while (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       if (toolRound >= MAX_TOOL_ROUNDS) {
@@ -377,18 +377,57 @@ SYSTEM SNAPSHOT:
         })
       );
 
-      messages.push(...toolResults.map(tr => ({ ...tr, content: stripInternalFields(tr.content) })));
+      // Filter out tool results that have the no-response marker
+      const filteredToolResults = toolResults.filter(tr => {
+        try {
+          const parsed = JSON.parse(tr.content);
+          return parsed.stdout !== "__NO_RESPONSE_NEEDED__";
+        } catch {
+          return true; // Keep non-JSON results
+        }
+      });
 
-      // Refresh typing indicator between tool calls
-      if (message.sendTyping) {
-        await message.sendTyping();
+      // Check if any tool used the no-response pattern
+      const hasNoResponseTool = toolResults.some(tr => {
+        try {
+          const parsed = JSON.parse(tr.content);
+          return parsed.stdout === "__NO_RESPONSE_NEEDED__";
+        } catch {
+          return false;
+        }
+      });
+
+      // If any tool used no-response pattern, skip this entire round
+      if (hasNoResponseTool) {
+        shouldSendFinalResponse = false;
+        break;
       }
-      responseMessage = await safeChat(messages, toolDefs, `tool_round_${toolRound}`);
-      responseMessage = parseInlineToolCalls(responseMessage);
+
+      // Only add tool results and continue conversation if there are results to process
+      if (filteredToolResults.length > 0) {
+        messages.push(...filteredToolResults.map(tr => ({ ...tr, content: stripInternalFields(tr.content) })));
+
+        // Refresh typing indicator between tool calls
+        if (message.sendTyping) {
+          await message.sendTyping();
+        }
+        responseMessage = await safeChat(messages, toolDefs, `tool_round_${toolRound}`);
+        responseMessage = parseInlineToolCalls(responseMessage);
+      } else {
+        // All tool results were filtered out, end the conversation loop
+        shouldSendFinalResponse = false;
+        break;
+      }
     }
 
     // Send final response (Discord has a 2000 char limit per message)
     const replyText = responseMessage.content || 'Done, Boss. No further output.';
+    
+    // Check if we should skip sending final response (no-response pattern)
+    if (!shouldSendFinalResponse) {
+      log(`[PROCESSOR] Skipping final response due to no-response pattern for session ${sessionId}.`);
+      return;
+    }
     
     // Check for "NO_ACTION_REQUIRED"
     if (replyText.trim() === 'NO_ACTION_REQUIRED') {
@@ -442,8 +481,9 @@ const kairos = new KairosEngine(async (tickMsg) => {
   const sessionDir = './data/session_history';
   try {
     const files = await readdir(sessionDir);
+    // Exclude archived sessions (pattern: {id}_{ISO_TIMESTAMP}.json)
     const sessionIds = files
-      .filter(f => f.endsWith('.json'))
+      .filter(f => f.endsWith('.json') && !/_\d{4}-/.test(f))
       .map(f => f.replace('.json', ''));
 
     log(`[KAIROS] Firing tick for ${sessionIds.length} sessions.`);

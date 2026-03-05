@@ -1,11 +1,21 @@
 /**
+ * Registry of tool names that use the _fullStdout pattern.
+ * Add new high-volume tools here when they adopt the display-and-truncate pattern.
+ */
+const FULL_STDOUT_TOOLS = new Set<string>(['jules']);
+
+export function registerFullStdoutTool(toolName: string): void {
+  FULL_STDOUT_TOOLS.add(toolName);
+}
+
+/**
  * Sanitizes tool results before they are added to the session history.
- * For Jules tool, we restore the full stdout from _fullStdout so the agent
- * has context when reading the session history later.
+ * For tools in FULL_STDOUT_TOOLS, restores the full stdout from _fullStdout
+ * so the agent has full context when reading session history later.
  */
 export function sanitizeHistory(messages: any[]): any[] {
   return messages.map(msg => {
-    if (msg.role === 'tool' && msg.name === 'jules') {
+    if (msg.role === 'tool' && FULL_STDOUT_TOOLS.has(msg.name)) {
       try {
         const content = JSON.parse(msg.content);
         if (content._fullStdout) {

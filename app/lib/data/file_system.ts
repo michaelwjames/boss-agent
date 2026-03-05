@@ -236,25 +236,29 @@ always_remember: false
   async saveSession(sessionId: string, messages: any[]): Promise<void> {
     if (!await fs.pathExists(this.sessionHistoryPath)) await fs.mkdirp(this.sessionHistoryPath);
     const filePath = path.join(this.sessionHistoryPath, `${sessionId}.json`);
-    await fs.writeJson(filePath, messages, { spaces: 2 });
+    await fs.writeJson(filePath, { lastActivityAt: Date.now(), messages }, { spaces: 2 });
   }
 
   async loadSession(sessionId: string): Promise<any[]> {
     const filePath = path.join(this.sessionHistoryPath, `${sessionId}.json`);
     if (await fs.pathExists(filePath)) {
-      const stat = await fs.stat(filePath);
-      const lastModified = stat.mtimeMs;
-      const now = Date.now();
+      const data = await fs.readJson(filePath);
+
+      // Support both new format { lastActivityAt, messages } and legacy array format
+      const messages: any[] = Array.isArray(data) ? data : (data.messages ?? []);
+      const lastActivityAt: number = Array.isArray(data)
+        ? (await fs.stat(filePath)).mtimeMs
+        : (data.lastActivityAt ?? Date.now());
 
       // 10 minutes inactivity rule (600,000 ms)
-      if (now - lastModified > 10 * 60 * 1000) {
-        const timestamp = new Date(lastModified).toISOString().replace(/[:.]/g, '-');
+      if (Date.now() - lastActivityAt > 10 * 60 * 1000) {
+        const timestamp = new Date(lastActivityAt).toISOString().replace(/[:.]/g, '-');
         const archivePath = path.join(this.sessionHistoryPath, `${sessionId}_${timestamp}.json`);
         await fs.rename(filePath, archivePath);
         return [];
       }
 
-      return await fs.readJson(filePath);
+      return messages;
     }
     return [];
   }

@@ -1,6 +1,8 @@
 import { Tool, ToolDefinition, ToolContext } from './base.js';
 import { MakeExecutor } from '../executors/make_executor.js';
 
+const STDOUT_TRUNCATION_LIMIT = 500;
+
 /**
  * Tool to interact with the Jules AI agent.
  */
@@ -59,6 +61,7 @@ export class JulesTool implements Tool {
               'list-activities',
               'delete-session',
               'fetch-latest-sessions',
+              'show-cached-sessions',
             ],
             description: 'The action to perform with Jules.',
           },
@@ -110,28 +113,62 @@ export class JulesTool implements Tool {
     if ((args.action === 'list-sessions' || args.action === 'list-activities') && !args.pageSize) {
       args.pageSize = 10;
     }
-    if (args.pageSize) makeArgs.SIZE = String(args.pageSize);
+    
+    // Map pageSize to the correct parameter name for each action
+    if (args.pageSize) {
+      if (args.action === 'fetch-latest-sessions' || args.action === 'show-cached-sessions') {
+        makeArgs.LIMIT = String(args.pageSize);
+      } else if (args.action === 'list-sessions' || args.action === 'list-activities' || args.action === 'list-sources') {
+        makeArgs.SIZE = String(args.pageSize);
+      }
+      // For other actions, pageSize is not applicable and will be ignored
+    }
+    
+    // Validate that no conflicting parameters are set
+    if (args.action === 'fetch-latest-sessions' && makeArgs.SIZE) {
+      throw new Error('fetch-latest-sessions uses LIMIT parameter, not SIZE');
+    }
+    if (args.action === 'show-cached-sessions' && makeArgs.SIZE) {
+      throw new Error('show-cached-sessions uses LIMIT parameter, not SIZE');
+    }
+    if ((args.action === 'list-sessions' || args.action === 'list-activities' || args.action === 'list-sources') && makeArgs.LIMIT) {
+      throw new Error(`${args.action} uses SIZE parameter, not LIMIT`);
+    }
 
     // Special handling for the action name to match Makefile targets
     let finalTarget = targetName;
+    if (args.action === 'create') finalTarget = 'jules-create-session';
     if (args.action === 'list-activities') finalTarget = 'jules-list-activities';
     if (args.action === 'get-session') finalTarget = 'jules-get-session';
     if (args.action === 'get-session-status') finalTarget = 'jules-get-session-status';
     if (args.action === 'get-pending-feedback') finalTarget = 'jules-get-pending-feedback';
     if (args.action === 'list-sessions') finalTarget = 'jules-list-sessions';
     if (args.action === 'fetch-latest-sessions') finalTarget = 'jules-fetch-latest-sessions';
+    if (args.action === 'show-cached-sessions') finalTarget = 'jules-show-cached-sessions';
 
     const cmdResult = await this.make.run(finalTarget, makeArgs);
     const humanizedStdout = this._humanizeTimestamps(cmdResult.stdout);
 
     // If context is available, send the output directly to the channel
+    // and return minimal acknowledgment to prevent unnecessary LLM responses
     if (context && humanizedStdout) {
       await context.send(humanizedStdout);
+      
+      // Return special marker indicating no response needed
+      const output = {
+        stdout: "__NO_RESPONSE_NEEDED__",
+        stderr: cmdResult.stderr,
+        exitCode: cmdResult.exitCode,
+        success: cmdResult.exitCode === 0,
+        _fullStdout: humanizedStdout // Internal use for history persistence
+      };
+      
+      return JSON.stringify(output);
     }
 
     // Return structured JSON output with a truncated stdout for the LLM
     const output = {
-      stdout: humanizedStdout.length > 500 ? `${humanizedStdout.substring(0, 500)}... (full output displayed in channel)` : humanizedStdout,
+      stdout: humanizedStdout.length > STDOUT_TRUNCATION_LIMIT ? `${humanizedStdout.substring(0, STDOUT_TRUNCATION_LIMIT)}... (full output displayed in channel)` : humanizedStdout,
       stderr: cmdResult.stderr,
       exitCode: cmdResult.exitCode,
       success: cmdResult.exitCode === 0,
