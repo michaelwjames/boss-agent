@@ -2,6 +2,7 @@ import { Tool, ToolDefinition, ToolContext } from './base.js';
 import { MakeExecutor } from '../executors/make_executor.js';
 
 const STDOUT_TRUNCATION_LIMIT = 500;
+const DISCORD_CONTENT_LIMIT = 1900; // Leave some buffer under 2000 limit
 
 /**
  * Tool to interact with the Jules AI agent.
@@ -152,7 +153,12 @@ export class JulesTool implements Tool {
     // If context is available, send the output directly to the channel
     // and return minimal acknowledgment to prevent unnecessary LLM responses
     if (context && humanizedStdout) {
-      await context.send(humanizedStdout);
+      // Truncate content for Discord to avoid 2000 character limit
+      let discordContent = humanizedStdout;
+      if (humanizedStdout.length > DISCORD_CONTENT_LIMIT) {
+        discordContent = `${humanizedStdout.substring(0, DISCORD_CONTENT_LIMIT)}...\n\n*(output truncated due to Discord limits - full output available in session history)*`;
+      }
+      await context.send(discordContent);
       
       // Return special marker indicating no response needed
       const output = {

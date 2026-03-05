@@ -128,6 +128,19 @@ def format_minimal_session(session: dict) -> dict:
         'branch_name': parsed_context.get('branch_name')
     }
 
+def normalize_session_id(session_id: str) -> str:
+    """Strip 'sessions/' prefix if present to get just the numeric ID.
+    
+    Args:
+        session_id: Session ID that may include 'sessions/' prefix
+        
+    Returns:
+        Numeric session ID only
+    """
+    if session_id.startswith('sessions/'):
+        return session_id[9:]  # Remove 'sessions/' prefix
+    return session_id
+
 def main():
     parser = argparse.ArgumentParser(
         description="Jules CLI with caching",
@@ -225,7 +238,7 @@ def main():
         
         elif args.command == "get-session":
             session = service.get_session(
-                session_id=args.id,
+                session_id=normalize_session_id(args.id),
                 force_refresh=args.force_refresh
             )
             
@@ -239,7 +252,7 @@ def main():
                 print(json.dumps(session, indent=2))
         
         elif args.command == "delete-session":
-            success = service.delete_session(args.id)
+            success = service.delete_session(normalize_session_id(args.id))
             if success:
                 print(f"Session {args.id} deleted successfully.")
             else:
@@ -262,16 +275,16 @@ def main():
                 print(f"Web URL: {session_url}")
         
         elif args.command == "send-message":
-            response = service.send_message(args.id, args.message)
+            response = service.send_message(normalize_session_id(args.id), args.message)
             print(f"Message sent to session {args.id}")
         
         elif args.command == "approve-plan":
-            response = service.approve_plan(args.id)
+            response = service.approve_plan(normalize_session_id(args.id))
             print(f"Plan approved for session {args.id}")
         
         elif args.command == "list-activities":
             result = service.list_activities(
-                session_id=args.id,
+                session_id=normalize_session_id(args.id),
                 page_size=args.page_size,
                 force_refresh=args.force_refresh
             )
@@ -329,15 +342,15 @@ def main():
                     print("\nNew sessions:")
                     for session in formatted_new:
                         repo_branch = f"{session['repo_name']}:{session['branch_name']}" if session['repo_name'] and session['branch_name'] else "N/A"
-                        print(f"  {repo_branch} | {session['title']} ({session['state']}) | {session['create_time']}")
+                        print(f"  {session['name']} | {repo_branch} | {session['title']} ({session['state']}) | {session['create_time']}")
                 if formatted_updated:
                     print("\nUpdated sessions:")
                     for session in formatted_updated:
                         repo_branch = f"{session['repo_name']}:{session['branch_name']}" if session['repo_name'] and session['branch_name'] else "N/A"
-                        print(f"  {repo_branch} | {session['title']} ({session['state']}) | {session['create_time']}")
+                        print(f"  {session['name']} | {repo_branch} | {session['title']} ({session['state']}) | {session['create_time']}")
         
         elif args.command == "get-session-status":
-            result = service.get_session_status(args.id, include_activities=args.activities)
+            result = service.get_session_status(normalize_session_id(args.id), include_activities=args.activities)
             
             if args.format == "json":
                 print(json.dumps(result, indent=2))
@@ -366,7 +379,7 @@ def main():
                         print(f"  [{act_time}] {act_type}: {content}")
         
         elif args.command == "get-pending-feedback":
-            result = service.get_pending_feedback(args.id)
+            result = service.get_pending_feedback(normalize_session_id(args.id))
             
             if args.format == "json":
                 print(json.dumps(result, indent=2))
