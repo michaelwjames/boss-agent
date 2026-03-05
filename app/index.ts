@@ -15,6 +15,8 @@ import { MemoryCompressor } from './lib/services/compressor.js';
 import { KairosEngine } from './lib/engine/kairos.js';
 import { log } from './lib/utils/logger.js';
 import { TerminalAdapter } from './lib/adapters/terminal.js';
+import { sanitizeHistory } from "./lib/history_sanitizer.js";
+import { stripInternalFields } from "./lib/history_sanitizer.js";
 
 // --- Configuration ---
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -364,10 +366,10 @@ SYSTEM SNAPSHOT:
 
           log(`[TOOL] Executing ${name} in parallel with args:`, args);
 
-          const result = await tools.execute(name, args);
+          const result = await tools.execute(name, args, { sessionId, send: message.send });
 
           return {
-            role: 'tool',
+            role: "tool",
             tool_call_id: toolCall.id,
             name,
             content: result,
@@ -375,7 +377,7 @@ SYSTEM SNAPSHOT:
         })
       );
 
-      messages.push(...toolResults);
+      messages.push(...toolResults.map(tr => ({ ...tr, content: stripInternalFields(tr.content) })));
 
       // Refresh typing indicator between tool calls
       if (message.sendTyping) {
@@ -413,7 +415,7 @@ SYSTEM SNAPSHOT:
       return true;
     }).slice(-50);
     
-    await fileSystem.saveSession(sessionId, updatedHistory);
+    await fileSystem.saveSession(sessionId, sanitizeHistory(updatedHistory));
 
     // Trigger background compression if limits are exceeded
     if (COMPRESSION_ENABLED) {
