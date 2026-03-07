@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CLI wrapper for Jules operations using the new service layer.
-This script provides the same interface as the make targets but uses caching.
+This script provides the same interface as the make targets but uses caching and nomenclature.
 """
 import argparse
 import json
@@ -13,17 +13,10 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from jules_service import JulesService
+from jules_nomenclature import JulesNomenclature
 
 def format_session_list(sessions: list, cached: bool = False) -> str:
-    """Format sessions for console output.
-    
-    Args:
-        sessions: List of session dictionaries
-        cached: Whether the data is from cache
-        
-    Returns:
-        Formatted string output
-    """
+    """Format sessions for console output."""
     if not sessions:
         return "No sessions found."
     
@@ -32,16 +25,15 @@ def format_session_list(sessions: list, cached: bool = False) -> str:
         name = session.get('name', '')
         title = session.get('title', 'No Title')
         state = session.get('state', 'UNKNOWN')
-        created = session.get('create_time', '')
+        created = session.get('create_time', session.get('createTime', ''))
+        archived_mark = "[ARCHIVED] " if session.get('archived') else ""
         
-        # Truncate prompt to 150 characters if present
         prompt = session.get('prompt', '')
         if prompt:
             if len(prompt) > 150:
                 prompt = prompt[:147] + "..."
             title = f"{title} | {prompt}"
         
-        # Format timestamp to relative time
         if created:
             try:
                 from datetime import datetime
@@ -50,7 +42,7 @@ def format_session_list(sessions: list, cached: bool = False) -> str:
             except:
                 pass
         
-        output += f"  {name} | {title} | {state} | {created}\n"
+        output += f"  {name} | {archived_mark}{title} | {state} | {created}\n"
     
     if cached:
         output += "\n[Data from cache]"
@@ -58,15 +50,7 @@ def format_session_list(sessions: list, cached: bool = False) -> str:
     return output
 
 def format_activity_list(activities: list, cached: bool = False) -> str:
-    """Format activities for console output.
-    
-    Args:
-        activities: List of activity dictionaries
-        cached: Whether the data is from cache
-        
-    Returns:
-        Formatted string output
-    """
+    """Format activities for console output."""
     if not activities:
         return "No activities found."
     
@@ -76,7 +60,6 @@ def format_activity_list(activities: list, cached: bool = False) -> str:
         description = activity.get('description', 'No description')
         create_time = activity.get('createTime', '')
         
-        # Format timestamp to relative time
         if create_time:
             try:
                 from datetime import datetime
@@ -93,26 +76,16 @@ def format_activity_list(activities: list, cached: bool = False) -> str:
     return output
 
 def format_minimal_session(session: dict) -> dict:
-    """Format a session to minimal data for boss agent.
-    
-    Args:
-        session: Session dictionary from API or database
-        
-    Returns:
-        Minimal session dict with only essential fields
-    """
+    """Format a session to minimal data for boss agent."""
     from jules_db import JulesDatabase
     
-    # Parse source_context - handle both API (sourceContext) and DB (source_context) field names
     source_context = session.get('source_context') or session.get('sourceContext')
     parsed_context = JulesDatabase.parse_source_context(source_context)
     
-    # Truncate prompt to 150 characters
     prompt = session.get('prompt', '')
     if len(prompt) > 150:
         prompt = prompt[:147] + '...'
     
-    # Handle both API (createTime) and DB (create_time) field names
     create_time = session.get('create_time') or session.get('createTime')
     update_time = session.get('update_time') or session.get('updateTime')
     
@@ -125,25 +98,19 @@ def format_minimal_session(session: dict) -> dict:
         'url': session.get('url'),
         'prompt': prompt,
         'repo_name': parsed_context.get('repo_name'),
-        'branch_name': parsed_context.get('branch_name')
+        'branch_name': parsed_context.get('branch_name'),
+        'archived': session.get('archived', False)
     }
 
 def normalize_session_id(session_id: str) -> str:
-    """Strip 'sessions/' prefix if present to get just the numeric ID.
-    
-    Args:
-        session_id: Session ID that may include 'sessions/' prefix
-        
-    Returns:
-        Numeric session ID only
-    """
+    """Strip 'sessions/' prefix if present."""
     if session_id.startswith('sessions/'):
-        return session_id[9:]  # Remove 'sessions/' prefix
+        return session_id[9:]
     return session_id
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Jules CLI with caching",
+        description="Jules CLI with caching and nomenclature",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
@@ -152,6 +119,7 @@ def main():
     # List sessions command
     list_sessions_parser = subparsers.add_parser("list-sessions", help="List all sessions")
     list_sessions_parser.add_argument("--page-size", type=int, default=10, help="Number of sessions to return")
+    list_sessions_parser.add_argument("--filter", help="AIP-160 filter expression")
     list_sessions_parser.add_argument("--format", choices=["plain", "json"], default="plain", help="Output format")
     list_sessions_parser.add_argument("--force-refresh", action="store_true", help="Bypass cache")
     
@@ -164,6 +132,10 @@ def main():
     # Delete session command
     delete_session_parser = subparsers.add_parser("delete-session", help="Delete a session")
     delete_session_parser.add_argument("--id", required=True, help="Session ID")
+
+    # Archive session command
+    archive_session_parser = subparsers.add_parser("archive-session", help="Archive a session")
+    archive_session_parser.add_argument("--id", required=True, help="Session ID")
     
     # Create session command
     create_parser = subparsers.add_parser("create", help="Create a new session")
@@ -186,6 +158,7 @@ def main():
     list_activities_parser = subparsers.add_parser("list-activities", help="List session activities")
     list_activities_parser.add_argument("--id", required=True, help="Session ID")
     list_activities_parser.add_argument("--page-size", type=int, default=10, help="Number of activities to return")
+    list_activities_parser.add_argument("--filter", help="AIP-160 filter expression")
     list_activities_parser.add_argument("--format", choices=["plain", "json"], default="plain", help="Output format")
     list_activities_parser.add_argument("--force-refresh", action="store_true", help="Bypass cache")
     
@@ -223,9 +196,26 @@ def main():
     try:
         service = JulesService()
         
+        # 3.3 Implementation: Integrate nomenclature for repo resolution
+        if args.command == "create" and args.repo:
+            nom = JulesNomenclature()
+            nom.load_catalog()
+            resolution = nom.resolve_repo_name(args.repo)
+
+            if resolution["exact"]:
+                args.repo = resolution["exact"]["name"]
+            elif resolution["candidates"]:
+                candidate_names = [c['name'] for c in resolution["candidates"]]
+                print(f"Error: Repository '{args.repo}' not found. Did you mean one of these?\n - " + "\n - ".join(candidate_names), file=sys.stderr)
+                sys.exit(1)
+            else:
+                print(f"Error: Repository '{args.repo}' not found and no close matches discovered.", file=sys.stderr)
+                sys.exit(1)
+
         if args.command == "list-sessions":
             result = service.list_sessions(
                 page_size=args.page_size,
+                filter_expr=args.filter,
                 force_refresh=args.force_refresh
             )
             sessions = result.get('sessions', [])
@@ -257,6 +247,13 @@ def main():
                 print(f"Session {args.id} deleted successfully.")
             else:
                 print(f"Failed to delete session {args.id}.")
+
+        elif args.command == "archive-session":
+            success = service.archive_session(normalize_session_id(args.id))
+            if success:
+                print(f"Session {args.id} archived successfully.")
+            else:
+                print(f"Failed to archive session {args.id}.")
         
         elif args.command == "create":
             session = service.create_session(
@@ -286,6 +283,7 @@ def main():
             result = service.list_activities(
                 session_id=normalize_session_id(args.id),
                 page_size=args.page_size,
+                filter_expr=args.filter,
                 force_refresh=args.force_refresh
             )
             activities = result.get('activities', [])
@@ -320,7 +318,6 @@ def main():
             updated_sessions = result.get('updated_sessions', [])
             total_fetched = result.get('total_fetched', 0)
             
-            # Format sessions to minimal data
             formatted_new = [format_minimal_session(s) for s in new_sessions]
             formatted_updated = [format_minimal_session(s) for s in updated_sessions]
             
@@ -372,7 +369,6 @@ def main():
                         act_type = act.get('type', 'unknown').replace('_', ' ').title()
                         content = act.get('content', '')
                         
-                        # Truncate content if too long
                         if len(content) > 150:
                             content = content[:147] + "..."
                             
@@ -398,8 +394,6 @@ def main():
         
         elif args.command == "show-cached-sessions":
             from jules_db import JulesDatabase
-            
-            # Get sessions directly from cache (no API call)
             db = JulesDatabase()
             sessions = db.list_sessions(limit=args.limit)
             
@@ -409,29 +403,29 @@ def main():
             
             print("Cached Sessions:")
             for session in sessions:
-                # Extract session info
                 name = session.get('name', '')
                 title = session.get('title', 'No Title')
                 state = session.get('state', 'UNKNOWN')
                 update_time = session.get('update_time', session.get('create_time', ''))
                 
-                # Parse source context for repo and branch
                 source_context = session.get('source_context')
                 repo_info = JulesDatabase.parse_source_context(source_context)
                 repo_name = repo_info['repo_name'] or 'Unknown'
                 branch_name = repo_info['branch_name'] or 'Unknown'
                 
-                # Format update time to human readable
                 formatted_time = JulesDatabase.format_timestamp_human(update_time)
                 
-                # Truncate title to max 50 chars
                 if len(title) > 50:
                     title = title[:47] + "..."
                 
                 print(f"- {name} | {repo_name}:{branch_name} | {state} | {title} | {formatted_time}")
     
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        # 3.3 Implementation: Sanitize and obfuscate internal error details
+        error_msg = str(e)
+        if "sessions/" in error_msg:
+             error_msg = "A session operation failed. Please check the session ID and try again."
+        print(f"Error: {error_msg}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":

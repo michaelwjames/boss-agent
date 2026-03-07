@@ -14,17 +14,12 @@ class JulesDatabase:
             db_path: Path to SQLite database file. Defaults to data/jules_cache.db
         """
         if db_path is None:
-            # Default to data/jules_cache.db relative to project root
-            # jules_db.py is in data/skills/jules-agent/, so we go up 4 levels to project root
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
             db_path = os.path.join(project_root, 'data', 'jules_cache.db')
         
         self.db_path = db_path
-        
-        # Ensure the directory exists
         db_dir = os.path.dirname(self.db_path)
         os.makedirs(db_dir, exist_ok=True)
-        
         self._ensure_db_exists()
     
     def _get_connection(self) -> sqlite3.Connection:
@@ -39,81 +34,61 @@ class JulesDatabase:
         try:
             cursor = conn.cursor()
             
-            # Create sessions table with auto-incrementing id and unique name
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    title TEXT,
-                    state TEXT,
-                    create_time TEXT,
-                    update_time TEXT,
-                    url TEXT,
-                    prompt TEXT,
-                    source_context TEXT,
-                    automation_mode TEXT,
-                    require_plan_approval INTEGER,
-                    outputs TEXT,
-                    activities TEXT,
-                    last_synced_at TEXT
-                )
-            """)
+            # Check if archived column exists, if not add it
+            cursor.execute("PRAGMA table_info(sessions)")
+            columns = [col[1] for col in cursor.fetchall()]
             
-            # Create indexes for common queries
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_sessions_state 
-                ON sessions(state)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_sessions_create_time 
-                ON sessions(create_time DESC)
-            """)
+            if not columns:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS sessions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL UNIQUE,
+                        title TEXT,
+                        state TEXT,
+                        create_time TEXT,
+                        update_time TEXT,
+                        url TEXT,
+                        prompt TEXT,
+                        source_context TEXT,
+                        automation_mode TEXT,
+                        require_plan_approval INTEGER,
+                        outputs TEXT,
+                        activities TEXT,
+                        last_synced_at TEXT,
+                        archived INTEGER DEFAULT 0
+                    )
+                """)
+            elif 'archived' not in columns:
+                cursor.execute("ALTER TABLE sessions ADD COLUMN archived INTEGER DEFAULT 0")
+
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_state ON sessions(state)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_create_time ON sessions(create_time DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_archived ON sessions(archived)")
             
             conn.commit()
         finally:
             conn.close()
     
     def upsert_session(self, session_data: Dict[str, Any]) -> bool:
-        """Insert or update a session in the database.
-        
-        Args:
-            session_data: Dictionary containing session data from Jules API
-            
-        Returns:
-            True if successful
-        """
+        """Insert or update a session in the database."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            
-            # Extract relevant fields from session data
             session_name = session_data.get('name', '')
             
-            # Prepare activities JSON blob
-            activities_json = None
-            if 'activities' in session_data:
-                activities_json = json.dumps(session_data['activities'])
-            
-            # Prepare outputs JSON blob
-            outputs_json = None
-            if 'outputs' in session_data:
-                outputs_json = json.dumps(session_data['outputs'])
-            
-            # Prepare source context JSON blob
-            source_context_json = None
-            if 'sourceContext' in session_data:
-                source_context_json = json.dumps(session_data['sourceContext'])
+            activities_json = json.dumps(session_data['activities']) if 'activities' in session_data else None
+            outputs_json = json.dumps(session_data['outputs']) if 'outputs' in session_data else None
+            source_context_json = json.dumps(session_data['sourceContext']) if 'sourceContext' in session_data else None
             
             now = datetime.utcnow().isoformat()
+            archived = 1 if session_data.get('archived', False) else 0
             
-            # Use INSERT ... ON CONFLICT DO UPDATE to preserve the existing id on updates.
-            # INSERT OR REPLACE would DELETE + INSERT, assigning a new AUTOINCREMENT id each time.
             cursor.execute("""
                 INSERT INTO sessions (
                     name, title, state, create_time, update_time, url,
                     prompt, source_context, automation_mode, require_plan_approval,
-                    outputs, activities, last_synced_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    outputs, activities, last_synced_at, archived
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     title = excluded.title,
                     state = excluded.state,
@@ -126,7 +101,8 @@ class JulesDatabase:
                     require_plan_approval = excluded.require_plan_approval,
                     outputs = excluded.outputs,
                     activities = excluded.activities,
-                    last_synced_at = excluded.last_synced_at
+                    last_synced_at = excluded.last_synced_at,
+                    archived = excluded.archived
             """, (
                 session_name,
                 session_data.get('title', ''),
@@ -140,7 +116,8 @@ class JulesDatabase:
                 1 if session_data.get('requirePlanApproval', False) else 0,
                 outputs_json,
                 activities_json,
-                now
+                now,
+                archived
             ))
             
             conn.commit()
@@ -152,19 +129,10 @@ class JulesDatabase:
             conn.close()
     
     def update_session_activities(self, session_id: str, activities: List[Dict[str, Any]]) -> bool:
-        """Update the activities JSON blob for a session.
-        
-        Args:
-            session_id: The session ID (name field)
-            activities: List of activity objects from Jules API
-            
-        Returns:
-            True if successful
-        """
+        """Update the activities JSON blob for a session."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            
             activities_json = json.dumps(activities)
             now = datetime.utcnow().isoformat()
             
@@ -183,75 +151,51 @@ class JulesDatabase:
             conn.close()
     
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve a session by ID.
-        
-        Args:
-            session_id: The session ID (name field)
-            
-        Returns:
-            Session dictionary or None if not found
-        """
+        """Retrieve a session by ID."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM sessions WHERE name = ?",
-                (session_id,)
-            )
+            cursor.execute("SELECT * FROM sessions WHERE name = ?", (session_id,))
             row = cursor.fetchone()
-            
-            if row:
-                return self._row_to_dict(row)
-            return None
+            return self._row_to_dict(row) if row else None
         finally:
             conn.close()
     
     def list_sessions(
         self,
         limit: int = 50,
-        state_filter: Optional[str] = None
+        state_filter: Optional[str] = None,
+        include_archived: bool = False
     ) -> List[Dict[str, Any]]:
-        """List sessions with optional filtering.
-        
-        Args:
-            limit: Maximum number of sessions to return
-            state_filter: Optional state to filter by (e.g., 'COMPLETED', 'FAILED')
-            
-        Returns:
-            List of session dictionaries
-        """
+        """List sessions with optional filtering."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+            query = "SELECT * FROM sessions "
+            params = []
             
+            where_clauses = []
             if state_filter:
-                cursor.execute("""
-                    SELECT * FROM sessions 
-                    WHERE state = ?
-                    ORDER BY create_time DESC 
-                    LIMIT ?
-                """, (state_filter, limit))
-            else:
-                cursor.execute("""
-                    SELECT * FROM sessions 
-                    ORDER BY create_time DESC 
-                    LIMIT ?
-                """, (limit,))
+                where_clauses.append("state = ?")
+                params.append(state_filter)
+
+            if not include_archived:
+                where_clauses.append("archived = 0")
+
+            if where_clauses:
+                query += "WHERE " + " AND ".join(where_clauses) + " "
             
+            query += "ORDER BY create_time DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             return [self._row_to_dict(row) for row in rows]
         finally:
             conn.close()
     
     def delete_session(self, session_id: str) -> bool:
-        """Delete a session from the database.
-        
-        Args:
-            session_id: The session ID (name field)
-            
-        Returns:
-            True if session was deleted
-        """
+        """Delete a session from the database."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
@@ -262,11 +206,7 @@ class JulesDatabase:
             conn.close()
     
     def get_session_count(self) -> int:
-        """Get the total number of sessions in the database.
-        
-        Returns:
-            Count of sessions
-        """
+        """Get the total number of sessions in the database."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
@@ -277,17 +217,8 @@ class JulesDatabase:
             conn.close()
     
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
-        """Convert a database row to a dictionary, parsing JSON fields.
-        
-        Args:
-            row: SQLite row object
-            
-        Returns:
-            Dictionary representation
-        """
+        """Convert a database row to a dictionary, parsing JSON fields."""
         result = dict(row)
-        
-        # Parse JSON fields
         for field in ['activities', 'outputs', 'source_context']:
             if result.get(field):
                 try:
@@ -295,122 +226,67 @@ class JulesDatabase:
                 except json.JSONDecodeError:
                     result[field] = None
         
-        # Convert boolean fields
         if result.get('require_plan_approval') is not None:
             result['require_plan_approval'] = bool(result['require_plan_approval'])
         
+        if result.get('archived') is not None:
+            result['archived'] = bool(result['archived'])
+
         return result
     
     @staticmethod
     def parse_source_context(source_context: Optional[str]) -> Dict[str, str]:
-        """Parse source_context JSON to extract repo_name and branch_name.
-        
-        Args:
-            source_context: JSON string or dict containing source context
-            
-        Returns:
-            Dict with 'repo_name' and 'branch_name' keys
-        """
+        """Parse source_context JSON to extract repo_name and branch_name."""
         result = {'repo_name': None, 'branch_name': None}
-        
         if not source_context:
             return result
-        
         try:
-            # Handle both dict (already parsed) and JSON string
-            if isinstance(source_context, dict):
-                context = source_context
-            else:
-                context = json.loads(source_context)
-            
-            # Extract repo_name from source field
+            context = source_context if isinstance(source_context, dict) else json.loads(source_context)
             source = context.get('source', '')
             if source and 'sources/github/' in source:
-                # source format: "sources/github/owner/repo"
                 parts = source.split('/')
                 if len(parts) >= 4:
                     result['repo_name'] = f"{parts[2]}/{parts[3]}"
-            
-            # Extract branch_name from githubRepoContext
             github_context = context.get('githubRepoContext', {})
             result['branch_name'] = github_context.get('startingBranch')
-            
-        except (json.JSONDecodeError, KeyError, AttributeError, TypeError):
+        except:
             pass
-        
         return result
     
     @staticmethod
     def format_timestamp_human(iso_timestamp: Optional[str]) -> str:
-        """Format ISO timestamp to human-readable relative time.
-        
-        Args:
-            iso_timestamp: ISO 8601 timestamp string
-            
-        Returns:
-            Human-readable relative time string
-        """
+        """Format ISO timestamp to human-readable relative time."""
         if not iso_timestamp:
             return 'Unknown'
-        
         try:
-            # Strip microseconds if present (Python 3.9 doesn't handle them in fromisoformat)
             if '.' in iso_timestamp:
                 iso_timestamp = iso_timestamp.split('.')[0] + 'Z'
-            
             parsed = datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
             now = datetime.now(parsed.tzinfo)
             diff = now - parsed
             abs_diff = abs(diff)
             
-            minute = timedelta(minutes=1)
-            hour = timedelta(hours=1)
-            day = timedelta(days=1)
-            
-            if abs_diff < minute:
+            if abs_diff < timedelta(minutes=1):
                 return 'just now' if diff.total_seconds() >= 0 else 'in a few seconds'
-            elif abs_diff < hour:
-                minutes = int(abs_diff.total_seconds() / 60)
-                suffix = 'ago' if diff.total_seconds() >= 0 else 'from now'
-                plural = 's' if minutes != 1 else ''
-                return f"{minutes} minute{plural} {suffix}"
-            elif abs_diff < day:
-                hours = int(abs_diff.total_seconds() / 3600)
-                suffix = 'ago' if diff.total_seconds() >= 0 else 'from now'
-                plural = 's' if hours != 1 else ''
-                return f"{hours} hour{plural} {suffix}"
+            elif abs_diff < timedelta(hours=1):
+                m = int(abs_diff.total_seconds() / 60)
+                return f"{m} minute{'s' if m != 1 else ''} {'ago' if diff.total_seconds() >= 0 else 'from now'}"
+            elif abs_diff < timedelta(days=1):
+                h = int(abs_diff.total_seconds() / 3600)
+                return f"{h} hour{'s' if h != 1 else ''} {'ago' if diff.total_seconds() >= 0 else 'from now'}"
             else:
-                days = int(abs_diff.total_seconds() / 86400)
-                suffix = 'ago' if diff.total_seconds() >= 0 else 'from now'
-                plural = 's' if days != 1 else ''
-                return f"{days} day{plural} {suffix}"
+                d = int(abs_diff.total_seconds() / 86400)
+                return f"{d} day{'s' if d != 1 else ''} {'ago' if diff.total_seconds() >= 0 else 'from now'}"
         except:
             return iso_timestamp
     
     def clear_old_sessions(self, days_old: int = 30) -> int:
-        """Delete sessions older than specified days.
-        
-        Args:
-            days_old: Number of days to keep sessions
-            
-        Returns:
-            Number of sessions deleted
-        """
+        """Delete sessions older than specified days."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            
-            cutoff_date = datetime.utcnow().replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            cutoff_date = cutoff_date.replace(day=cutoff_date.day - days_old)
-            cutoff_str = cutoff_date.isoformat()
-            
-            cursor.execute("""
-                DELETE FROM sessions 
-                WHERE create_time < ?
-            """, (cutoff_str,))
-            
+            cutoff = (datetime.utcnow() - timedelta(days=days_old)).isoformat()
+            cursor.execute("DELETE FROM sessions WHERE create_time < ?", (cutoff,))
             conn.commit()
             return cursor.rowcount
         except Exception as e:

@@ -123,9 +123,16 @@
                             "create",
                             "list-sessions",
                             "get-session",
+                            "get-session-status",
+                            "get-pending-feedback",
                             "send-message",
                             "approve-plan",
-                            "list-sources"
+                            "list-sources",
+                            "list-activities",
+                            "delete-session",
+                            "archive-session",
+                            "fetch-latest-sessions",
+                            "show-cached-sessions"
                         ],
                         "description": "The action to perform with Jules."
                     },
@@ -140,6 +147,14 @@
                     "sessionId": {
                         "type": "string",
                         "description": "The ID of an existing Jules session."
+                    },
+                    "pageSize": {
+                        "type": "number",
+                        "description": "Number of items to return for list-sessions and list-activities (defaults to 10)."
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "AIP-160 filter expression for list-sessions or list-activities."
                     },
                     "extraArgs": {
                         "type": "string",

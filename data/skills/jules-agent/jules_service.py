@@ -9,35 +9,28 @@ class JulesService:
     """Service layer for Jules operations with caching."""
     
     def __init__(self, api_key: Optional[str] = None, db_path: Optional[str] = None):
-        """Initialize the Jules service.
-        
-        Args:
-            api_key: Jules API key. If not provided, loads from JULES_API_KEY env var.
-            db_path: Path to SQLite database file.
-        """
+        """Initialize the Jules service."""
         self.api_controller = JulesApiController(api_key)
         self.db = JulesDatabase(db_path)
         
         # Cache TTL settings (in seconds)
-        self.session_cache_ttl = 300  # 5 minutes
+        self.default_cache_ttl = 300  # 5 minutes
+        self.active_session_cache_ttl = 30  # 30 seconds for active sessions
         self.activities_cache_ttl = 60  # 1 minute
     
+    def _get_session_ttl(self, state: Optional[str]) -> int:
+        """Determine TTL based on session state."""
+        if state in ["PLANNING", "IN_PROGRESS", "QUEUED", "AWAITING_PLAN_APPROVAL", "AWAITING_USER_FEEDBACK"]:
+            return self.active_session_cache_ttl
+        return self.default_cache_ttl
+
     def list_sources(
         self,
         page_size: int = 30,
         page_token: Optional[str] = None,
         filter_expr: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Lists all sources (repositories) connected to your account.
-        
-        Args:
-            page_size: Number of sources to return (1-100). Defaults to 30.
-            page_token: Page token from a previous ListSources response.
-            filter_expr: Filter expression (e.g., 'name=sources/source1 OR name=sources/source2')
-        
-        Returns:
-            Dict containing 'sources' list and optional 'nextPageToken'
-        """
+        """Lists all sources (repositories) connected to your account."""
         return self.api_controller.list_sources(
             page_size=page_size,
             page_token=page_token,
@@ -45,14 +38,7 @@ class JulesService:
         )
     
     def get_source(self, source_id: str) -> Dict[str, Any]:
-        """Retrieves a single source by ID.
-        
-        Args:
-            source_id: The source ID (e.g., 'github-myorg-myrepo')
-        
-        Returns:
-            Dict containing source details including branches
-        """
+        """Retrieves a single source by ID."""
         return self.api_controller.get_source(source_id)
     
     def create_session(
@@ -64,19 +50,7 @@ class JulesService:
         require_plan_approval: bool = False,
         automation_mode: str = "AUTOMATION_MODE_UNSPECIFIED"
     ) -> Dict[str, Any]:
-        """Creates a new Jules session and stores it in the database.
-        
-        Args:
-            prompt: The task description for Jules to execute
-            title: Optional title for the session
-            repo: Repository name (owner/repo) for the session
-            branch: Branch to start from (default: 'main')
-            require_plan_approval: If true, plans require explicit approval
-            automation_mode: 'AUTOMATION_MODE_UNSPECIFIED' or 'AUTO_CREATE_PR'
-        
-        Returns:
-            Dict containing the created session
-        """
+        """Creates a new Jules session and stores it in the database."""
         session = self.api_controller.create_session(
             prompt=prompt,
             title=title,
@@ -95,20 +69,13 @@ class JulesService:
         self,
         page_size: int = 30,
         page_token: Optional[str] = None,
+        filter_expr: Optional[str] = None,
         force_refresh: bool = False
     ) -> Dict[str, Any]:
-        """Lists all sessions, using cached data when available.
-        
-        Args:
-            page_size: Number of sessions to return (1-100). Defaults to 30.
-            page_token: Page token from a previous ListSessions response.
-            force_refresh: If True, bypass cache and fetch from API
-        
-        Returns:
-            Dict containing 'sessions' list and optional 'nextPageToken'
-        """
+        """Lists all sessions, using cached data when available."""
         # If we have cached sessions and they're fresh enough, return them
-        if not force_refresh:
+        # Note: Basic caching ignores filter_expr for now for simplicity in local DB
+        if not force_refresh and not filter_expr:
             cached_sessions = self.db.list_sessions(limit=page_size)
             
             # Check if cache is still valid
@@ -117,7 +84,7 @@ class JulesService:
                     last_synced = datetime.fromisoformat(cached_sessions[0]['last_synced_at'])
                     cache_age = (datetime.utcnow() - last_synced).total_seconds()
                     
-                    if cache_age < self.session_cache_ttl:
+                    if cache_age < self.default_cache_ttl:
                         return {
                             'sessions': cached_sessions,
                             'cached': True,
@@ -129,7 +96,8 @@ class JulesService:
         # Fetch fresh data from API
         api_result = self.api_controller.list_sessions(
             page_size=page_size,
-            page_token=page_token
+            page_token=page_token,
+            filter_expr=filter_expr
         )
         
         # Store fetched sessions in database
@@ -138,6 +106,13 @@ class JulesService:
             self.db.upsert_session(session)
         
         # Return sessions from DB (which now has fresh data)
+        # If filtered, we return the API result directly since local DB doesn't support AIP-160
+        if filter_expr:
+            return {
+                'sessions': sessions,
+                'cached': False
+            }
+
         db_sessions = self.db.list_sessions(limit=page_size)
         
         result = {
@@ -155,15 +130,7 @@ class JulesService:
         session_id: str,
         force_refresh: bool = False
     ) -> Optional[Dict[str, Any]]:
-        """Retrieves a single session by ID, using cache when available.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-            force_refresh: If True, bypass cache and fetch from API
-        
-        Returns:
-            Dict containing full session details or None if not found
-        """
+        """Retrieves a single session by ID, using cache when available."""
         # Try to get from cache first
         if not force_refresh:
             cached_session = self.db.get_session(session_id)
@@ -173,7 +140,8 @@ class JulesService:
                     last_synced = datetime.fromisoformat(cached_session['last_synced_at'])
                     cache_age = (datetime.utcnow() - last_synced).total_seconds()
                     
-                    if cache_age < self.session_cache_ttl:
+                    ttl = self._get_session_ttl(cached_session.get('state'))
+                    if cache_age < ttl:
                         cached_session['cached'] = True
                         cached_session['cache_age_seconds'] = cache_age
                         return cached_session
@@ -192,53 +160,28 @@ class JulesService:
         return None
     
     def delete_session(self, session_id: str) -> bool:
-        """Deletes a session from both the API and database.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-        
-        Returns:
-            True if successful
-        """
-        # Delete from API
+        """Deletes a session from both the API and database."""
         api_success = self.api_controller.delete_session(session_id)
-        
-        # Delete from database regardless of API result
         self.db.delete_session(session_id)
-        
+        return api_success
+
+    def archive_session(self, session_id: str) -> bool:
+        """Archives a session."""
+        api_success = self.api_controller.archive_session(session_id)
+        # Refresh from API to update local archived state
+        self._refresh_session_cache(session_id)
         return api_success
     
     def send_message(self, session_id: str, message: str) -> Dict[str, Any]:
-        """Sends a message to a session and updates cache.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-            message: The message to send to the session
-        
-        Returns:
-            Dict containing the response
-        """
+        """Sends a message to a session and updates cache."""
         response = self.api_controller.send_message(session_id, message)
-        
-        # Refresh session data after sending message
         self._refresh_session_cache(session_id)
-        
         return response
     
     def approve_plan(self, session_id: str) -> Dict[str, Any]:
-        """Approves a pending plan in a session and updates cache.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-        
-        Returns:
-            Dict containing the response
-        """
+        """Approves a pending plan in a session and updates cache."""
         response = self.api_controller.approve_plan(session_id)
-        
-        # Refresh session data after approving plan
         self._refresh_session_cache(session_id)
-        
         return response
     
     def list_activities(
@@ -246,23 +189,12 @@ class JulesService:
         session_id: str,
         page_size: int = 50,
         page_token: Optional[str] = None,
-        create_time: Optional[str] = None,
+        filter_expr: Optional[str] = None,
         force_refresh: bool = False
     ) -> Dict[str, Any]:
-        """Lists activities for a session, using cache when available.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-            page_size: Number of activities to return (1-100). Defaults to 50.
-            page_token: Page token from a previous ListActivities response.
-            create_time: Filter activities created after this timestamp
-            force_refresh: If True, bypass cache and fetch from API
-        
-        Returns:
-            Dict containing 'activities' list and optional 'nextPageToken'
-        """
+        """Lists activities for a session, using cache when available."""
         # Try to get from cache first
-        if not force_refresh:
+        if not force_refresh and not filter_expr:
             cached_session = self.db.get_session(session_id)
             
             if cached_session and cached_session.get('activities') and cached_session.get('last_synced_at'):
@@ -291,12 +223,13 @@ class JulesService:
             session_id=session_id,
             page_size=page_size,
             page_token=page_token,
-            create_time=create_time
+            filter_expr=filter_expr
         )
         
-        # Store activities in database
+        # Store activities in database (only if not filtered)
         activities = api_result.get('activities', [])
-        self.db.update_session_activities(session_id, activities)
+        if not filter_expr:
+            self.db.update_session_activities(session_id, activities)
         
         # Return activities
         result = {
@@ -310,46 +243,19 @@ class JulesService:
         return result
     
     def get_activity(self, session_id: str, activity_id: str) -> Dict[str, Any]:
-        """Retrieves a single activity by ID.
-        
-        Args:
-            session_id: The session ID (numeric part only, e.g., '1234567')
-            activity_id: The activity ID
-        
-        Returns:
-            Dict containing activity details
-        """
+        """Retrieves a single activity by ID."""
         return self.api_controller.get_activity(session_id, activity_id)
     
     def get_session_count(self) -> int:
-        """Get the total number of sessions in the database.
-        
-        Returns:
-            Count of sessions
-        """
+        """Get the total number of sessions in the database."""
         return self.db.get_session_count()
     
     def clear_old_sessions(self, days_old: int = 30) -> int:
-        """Delete sessions older than specified days.
-        
-        Args:
-            days_old: Number of days to keep sessions
-            
-        Returns:
-            Number of sessions deleted
-        """
+        """Delete sessions older than specified days."""
         return self.db.clear_old_sessions(days_old)
     
     def get_session_status(self, session_id: str, include_activities: int = 3) -> Dict[str, Any]:
-        """Get the current state of a session and its recent activities.
-        
-        Args:
-            session_id: The session ID
-            include_activities: Number of recent activities to include
-            
-        Returns:
-            Dict containing session state and recent activities
-        """
+        """Get the current state of a session and its recent activities."""
         session = self.get_session(session_id, force_refresh=True)
         if not session:
             return {"error": f"Session {session_id} not found"}
@@ -371,7 +277,6 @@ class JulesService:
             
             formatted_activities = []
             for act in activities:
-                # Extract the most relevant info based on activity type
                 activity_type = "unknown"
                 content = ""
                 
@@ -400,14 +305,7 @@ class JulesService:
         return result
         
     def get_pending_feedback(self, session_id: str) -> Dict[str, Any]:
-        """Get the last agent message for a session awaiting feedback.
-        
-        Args:
-            session_id: The session ID
-            
-        Returns:
-            Dict containing the last message from the agent
-        """
+        """Get the last agent message for a session awaiting feedback."""
         session = self.get_session(session_id)
         if not session:
             return {"error": f"Session {session_id} not found"}
@@ -419,7 +317,6 @@ class JulesService:
         activities_result = self.list_activities(session_id, page_size=10, force_refresh=True)
         activities = activities_result.get("activities", [])
         
-        # Find the most recent agent message
         for act in activities:
             if "agentMessaged" in act:
                 return {
@@ -432,11 +329,7 @@ class JulesService:
         return {"error": "No recent agent message found despite awaiting feedback"}
         
     def _refresh_session_cache(self, session_id: str):
-        """Helper method to refresh session cache from API.
-        
-        Args:
-            session_id: The session ID
-        """
+        """Helper method to refresh session cache from API."""
         try:
             session = self.api_controller.get_session(session_id)
             if session:
@@ -445,21 +338,7 @@ class JulesService:
             print(f"Warning: Failed to refresh session cache for {session_id}: {e}")
     
     def fetch_latest_sessions(self, limit: int = 50) -> Dict[str, Any]:
-        """Fetch latest sessions from API, update cache, and return only new/updated sessions.
-        
-        This method is designed to be called by the boss agent to get session updates
-        without ingesting large amounts of data into the context window.
-        
-        Args:
-            limit: Maximum number of sessions to fetch from API
-            
-        Returns:
-            Dict containing:
-                - new_sessions: List of sessions that are new (not in cache)
-                - updated_sessions: List of sessions with state changes or updates
-                - total_fetched: Total number of sessions fetched from API
-        """
-        # Get existing sessions from cache to track what's new/updated
+        """Fetch latest sessions from API, update cache, and return only new/updated sessions."""
         existing_sessions = {}
         cached_sessions = self.db.list_sessions(limit=limit)
         for session in cached_sessions:
@@ -468,7 +347,6 @@ class JulesService:
                 'update_time': session.get('update_time')
             }
         
-        # Fetch fresh data from API
         api_result = self.api_controller.list_sessions(page_size=limit)
         api_sessions = api_result.get('sessions', [])
         
@@ -480,18 +358,15 @@ class JulesService:
             session_state = session.get('state')
             session_update_time = session.get('updateTime', session.get('createTime'))
             
-            # Check if this is a new session
             if session_name not in existing_sessions:
                 new_sessions.append(session)
             else:
-                # Check if state or update_time changed
                 cached_state = existing_sessions[session_name]['state']
                 cached_update_time = existing_sessions[session_name]['update_time']
                 
                 if session_state != cached_state or session_update_time != cached_update_time:
                     updated_sessions.append(session)
             
-            # Store/update in database
             self.db.upsert_session(session)
         
         return {

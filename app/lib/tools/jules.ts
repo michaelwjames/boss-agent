@@ -61,6 +61,7 @@ export class JulesTool implements Tool {
               'list-sources',
               'list-activities',
               'delete-session',
+              'archive-session',
               'fetch-latest-sessions',
               'show-cached-sessions',
             ],
@@ -81,6 +82,10 @@ export class JulesTool implements Tool {
           pageSize: {
             type: 'number',
             description: 'Number of items to return for list-sessions and list-activities (defaults to 10).',
+          },
+          filter: {
+            type: 'string',
+            description: 'AIP-160 filter expression for list-sessions or list-activities.',
           },
           extraArgs: {
             type: 'string',
@@ -109,6 +114,7 @@ export class JulesTool implements Tool {
     if (args.repo) makeArgs.REPO = args.repo;
     if (args.title) makeArgs.TITLE = args.title;
     if (args.branch) makeArgs.BRANCH = args.branch;
+    if (args.filter) makeArgs.FILTER = args.filter;
     
     // Default pageSize for list actions to prevent massive outputs
     if ((args.action === 'list-sessions' || args.action === 'list-activities') && !args.pageSize) {
@@ -122,7 +128,6 @@ export class JulesTool implements Tool {
       } else if (args.action === 'list-sessions' || args.action === 'list-activities' || args.action === 'list-sources') {
         makeArgs.SIZE = String(args.pageSize);
       }
-      // For other actions, pageSize is not applicable and will be ignored
     }
     
     // Validate that no conflicting parameters are set
@@ -146,6 +151,7 @@ export class JulesTool implements Tool {
     if (args.action === 'list-sessions') finalTarget = 'jules-list-sessions';
     if (args.action === 'fetch-latest-sessions') finalTarget = 'jules-fetch-latest-sessions';
     if (args.action === 'show-cached-sessions') finalTarget = 'jules-show-cached-sessions';
+    if (args.action === 'archive-session') finalTarget = 'jules-archive-session';
 
     const cmdResult = await this.make.run(finalTarget, makeArgs);
     const humanizedStdout = this._humanizeTimestamps(cmdResult.stdout);

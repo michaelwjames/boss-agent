@@ -172,3 +172,8 @@ jules-create-session:
 
 jules-show-cached-sessions:
 	@$(JULES_CLIENT) show-cached-sessions $(if $(LIMIT),--limit $(LIMIT))
+
+jules-archive-session:
+	@sid="$(ID)"; \
+	if [ -z "$$sid" ]; then sid="$(SESSION_ID)"; fi; \
+	$(JULES_CLIENT) archive-session --id "$$sid"
