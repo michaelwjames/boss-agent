@@ -117,8 +117,8 @@ create-boss-skills:
 gemini-image:
 	npx tsx data/skills/gemini_wrapper.ts image "$(QUERY)"
 
-# --- Jules Agent (Python Client with Caching) ---
-JULES_CLIENT = python3 data/skills/jules-agent/jules_cli.py
+# --- Jules Agent (TypeScript Client with Caching) ---
+JULES_CLIENT = npx tsx data/skills/jules-agent/index.ts
 
 jules-fetch-latest-sessions:
 	@$(JULES_CLIENT) fetch-latest-sessions $(if $(LIMIT),--limit $(LIMIT))
@@ -127,7 +127,7 @@ jules-list-sources:
 	@$(JULES_CLIENT) list-sources $(if $(SIZE),--page-size $(SIZE))
 
 jules-list-sessions:
-	@$(JULES_CLIENT) list-sessions $(if $(SIZE),--page-size $(SIZE))
+	@$(JULES_CLIENT) list-sessions $(if $(SIZE),--page-size $(SIZE)) $(if $(FILTER),--filter "$(FILTER)")
 
 jules-get-session:
 	@sid="$(ID)"; \
@@ -162,13 +162,13 @@ jules-approve-plan:
 jules-list-activities:
 	@sid="$(ID)"; \
 	if [ -z "$$sid" ]; then sid="$(SESSION_ID)"; fi; \
-	$(JULES_CLIENT) list-activities --id "$$sid" $(if $(SIZE),--page-size $(SIZE))
+	$(JULES_CLIENT) list-activities --id "$$sid" $(if $(SIZE),--page-size $(SIZE)) $(if $(FILTER),--filter "$(FILTER)")
 
 jules-create-session:
 	@$(JULES_CLIENT) create --prompt "$(PROMPT)" \
 		$(if $(TITLE),--title "$(TITLE)") \
-		$(if $(REPO),--repo $(REPO)) \
-		$(if $(BRANCH),--branch $(BRANCH))
+		$(if $(REPO),--repo "$(REPO)") \
+		$(if $(BRANCH),--branch "$(BRANCH)")
 
 jules-show-cached-sessions:
 	@$(JULES_CLIENT) show-cached-sessions $(if $(LIMIT),--limit $(LIMIT))

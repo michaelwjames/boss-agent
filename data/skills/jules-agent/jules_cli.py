@@ -196,7 +196,6 @@ def main():
     try:
         service = JulesService()
         
-        # 3.3 Implementation: Integrate nomenclature for repo resolution
         if args.command == "create" and args.repo:
             nom = JulesNomenclature()
             nom.load_catalog()
@@ -421,7 +420,6 @@ def main():
                 print(f"- {name} | {repo_name}:{branch_name} | {state} | {title} | {formatted_time}")
     
     except Exception as e:
-        # 3.3 Implementation: Sanitize and obfuscate internal error details
         error_msg = str(e)
         if "sessions/" in error_msg:
              error_msg = "A session operation failed. Please check the session ID and try again."
