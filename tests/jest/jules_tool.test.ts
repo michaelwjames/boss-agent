@@ -21,18 +21,18 @@ describe('JulesTool', () => {
     };
   });
 
-  it('should send output to discord and return truncated version to LLM', async () => {
+  it('should send output to discord and return acknowledgment to LLM', async () => {
     const args = { action: 'list-sessions' };
     const result = await julesTool.execute(args, mockContext);
     const parsed = JSON.parse(result);
 
     expect(mockMake.run).toHaveBeenCalledWith('jules-list-sessions', { SIZE: '10' });
     expect(mockContext.send).toHaveBeenCalledWith('Success Output');
-    expect(parsed.stdout).toBe('Success Output');
+    expect(parsed.stdout).toBe('__NO_RESPONSE_NEEDED__');
     expect(parsed._fullStdout).toBe('Success Output');
   });
 
-  it('should truncate output for LLM if too long', async () => {
+  it('should truncate output for LLM if too long (without context)', async () => {
     const longOutput = 'A'.repeat(600);
     mockMake.run.mockResolvedValue({
       stdout: longOutput,
@@ -40,12 +40,11 @@ describe('JulesTool', () => {
       exitCode: 0
     });
 
-    const result = await julesTool.execute({ action: 'list-sessions' }, mockContext);
+    const result = await julesTool.execute({ action: 'list-sessions' });
     const parsed = JSON.parse(result);
 
     expect(parsed.stdout).toContain('... (full output displayed in channel)');
     expect(parsed.stdout.length).toBeLessThan(600);
     expect(parsed._fullStdout).toBe(longOutput);
-    expect(mockContext.send).toHaveBeenCalledWith(longOutput);
   });
 });

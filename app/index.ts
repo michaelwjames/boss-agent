@@ -177,7 +177,7 @@ async function processMessage(message: NormalizedMessage) {
     const fileIndex = await fileSystem.getFileSystemIndex();
     const history = await fileSystem.loadSession(sessionId);
 
-    const systemPrompt = `You are the "Boss Agent," a strictly obedient but personality-rich AI assistant.
+    const baseSystemPrompt = `You are the "Boss Agent," a strictly obedient but personality-rich AI assistant.
 
 CORE RULES:
 1. Always address the user as "Boss."
@@ -190,7 +190,9 @@ CORE RULES:
 8. If the Boss sent a voice note, you received the transcribed text. Confirm what you heard before acting on ambiguous commands.
 9. If you receive a [SYSTEM: KAIROS_TICK] message, you are waking up autonomously. Review your current context (especially tasks in memory and active Jules sessions). If nothing requires attention, reply with exactly 'NO_ACTION_REQUIRED' to prevent spamming the chat. If action is needed, use your tools or send a proactive message.
 
-${soulPrompt ? `PERSONALITY:\n${soulPrompt}\n` : ''}
+${soulPrompt ? `PERSONALITY:\n${soulPrompt}\n` : ''}`;
+
+    const sessionContextPrompt = `--- SESSION CONTEXT ---
 AVAILABLE FILES:
 ${fileIndex}
 
@@ -203,27 +205,56 @@ SYSTEM SNAPSHOT:
 
     // Token-aware sliding window
     const MAX_CONTEXT_TOKENS = 6000;
-    let messages: any[] = [{ role: 'system', content: systemPrompt }];
-    let currentTokens = enc.encode(systemPrompt).length + enc.encode(userText).length + 500; // 500 safety margin for tool defs
+    const HEADROOM = 1000; // Drop messages in chunks to keep cache stable
 
-    // Add history from newest to oldest until limit reached
-    const historyToInclude: any[] = [];
+    let currentTokens = enc.encode(baseSystemPrompt).length +
+                        enc.encode(sessionContextPrompt).length +
+                        enc.encode(userText).length + 500; // 500 safety margin for tool defs
+
+    // Add history from newest to oldest until limit reached.
+    // OPTIMIZATION: If the history exceeds the limit, we drop extra messages to create HEADROOM.
+    // This prevents the cache prefix from changing every single turn.
+    let historyToInclude: any[] = [];
+    let historyTokens = 0;
+    let limitReached = false;
     for (let i = history.length - 1; i >= 0; i--) {
       const msg = history[i];
       const msgTokens = enc.encode(msg.content || JSON.stringify(msg.tool_calls || '')).length;
-      if (currentTokens + msgTokens > MAX_CONTEXT_TOKENS) break;
-      currentTokens += msgTokens;
+      if (currentTokens + historyTokens + msgTokens > MAX_CONTEXT_TOKENS) {
+        limitReached = true;
+        break;
+      }
+      historyTokens += msgTokens;
       historyToInclude.unshift(msg);
     }
 
-    messages = [...messages, ...historyToInclude, { role: 'user', content: userText }];
+    if (limitReached) {
+      // We hit the limit. Now we reduce historyToInclude until we have HEADROOM.
+      // This "chunked" dropping keeps the prefix stable for several turns.
+      while (historyToInclude.length > 1 && (currentTokens + historyTokens > (MAX_CONTEXT_TOKENS - HEADROOM))) {
+        const dropped = historyToInclude.shift();
+        const droppedTokens = enc.encode(dropped.content || JSON.stringify(dropped.tool_calls || '')).length;
+        historyTokens -= droppedTokens;
+      }
+      log(`[CACHE_OPT] Limit reached. Truncated history to ${historyToInclude.length} messages to create ${HEADROOM} token headroom for cache stability.`);
+    }
+
+    // ARCHITECTURE OPTIMIZATION FOR CACHING:
+    // [Base System (Stable)] -> [History (Incremental)] -> [Session Context (Volatile)] -> [User Message (Dynamic)]
+    // This maximizes the length of the stable prefix for Groq Prompt Caching.
+    let messages: any[] = [
+      { role: 'system', content: baseSystemPrompt },
+      ...historyToInclude,
+      { role: 'system', content: sessionContextPrompt },
+      { role: 'user', content: userText }
+    ];
 
     const toolDefs = tools.getDefinitions();
     
     // Calculate and log context stats before sending request
     const currentModel = groqModels[0] || 'llama-3.3-70b-versatile';
     const contextStats = tokenTracker.calculateContextStats(
-      systemPrompt,
+      baseSystemPrompt + sessionContextPrompt,
       historyToInclude,
       userText,
       toolDefs,

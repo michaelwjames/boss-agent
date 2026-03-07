@@ -55,11 +55,11 @@ export class FileSystem {
   }
 
   async getFileSystemIndex(): Promise<string> {
-    const vaultFiles = await this._readDir(this.vaultPath);
-    const memoryFiles = await this._readDir(this.memoryPath);
-    const skillsFiles = await this._readDir(this.skillsPath);
-    const largeOutputs = await this._readDir(this.largeOutputsPath, false);
-    const sessions = await this._readDir(this.sessionHistoryPath, false);
+    // Sort all file lists alphabetically to ensure a stable index for caching
+    const vaultFiles = (await this._readDir(this.vaultPath)).sort((a, b) => a.file.localeCompare(b.file));
+    const memoryFiles = (await this._readDir(this.memoryPath)).sort((a, b) => a.file.localeCompare(b.file));
+    const skillsFiles = (await this._readDir(this.skillsPath)).sort((a, b) => a.file.localeCompare(b.file));
+    const largeOutputs = (await this._readDir(this.largeOutputsPath, false)).sort((a, b) => a.file.localeCompare(b.file));
 
     let index = "--- FILE SYSTEM INDEX ---\n";
     
@@ -89,11 +89,7 @@ export class FileSystem {
       ? largeOutputs.map(f => `- ${f.file} (${f.content.length} bytes)`).join('\n')
       : "No large outputs found.\n";
 
-    index += "\n\n[SESSION HISTORY (data/session_history/)]\n";
-    index += sessions.length > 0
-      ? sessions.map(f => `- ${f.file} (${f.content.length} bytes)`).join('\n')
-      : "No session history found.\n";
-
+    // SESSION HISTORY is excluded from the main index to reduce volatility (prefix stability for caching)
     return index;
   }
 
